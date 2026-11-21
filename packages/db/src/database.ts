@@ -22,6 +22,8 @@ export interface Database {
     version: Generated<number>;
     created_at: Date;
     updated_at: Date;
+    client_request_id: ColumnType<string | null, string | null | undefined, never>;
+    create_input_hash: ColumnType<string | null, string | null | undefined, never>;
   };
   students: {
     id: string;
@@ -32,6 +34,8 @@ export interface Database {
     version: Generated<number>;
     created_at: Date;
     updated_at: Date;
+    client_request_id: ColumnType<string | null, string | null | undefined, never>;
+    create_input_hash: ColumnType<string | null, string | null | undefined, never>;
   };
   raw_notes: {
     id: string;

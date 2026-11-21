@@ -4,6 +4,9 @@ export const idSchema = z.uuid();
 export const timestampSchema = z.iso.datetime({ offset: true });
 export const versionSchema = z.int().positive();
 export const nonblankTextSchema = z.string().regex(/\S/, "Must not be blank");
+export const nonblankTextWithoutNulSchema = nonblankTextSchema.refine(
+  (value) => !value.includes("\u0000"), "Must not contain a NUL character",
+);
 
 export const classParamsSchema = z.strictObject({ classId: idSchema });
 export const versionedInputSchema = z.strictObject({ expectedVersion: versionSchema });

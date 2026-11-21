@@ -1,13 +1,17 @@
+import type { Database } from "@tutorloop/db/database";
 import fastify, { type FastifyInstance } from "fastify";
+import type { Kysely } from "kysely";
 import { requirePrincipal, type AuthVerifier } from "./auth/principal.ts";
 import { registerApiErrorHandlers } from "./common/errors.ts";
+import { registerClassRoutes } from "./modules/classes/routes.ts";
 
 export type CreateAppOptions = {
   authVerifier: AuthVerifier;
+  db?: Kysely<Database>;
 };
 
 export async function createApp(
-  { authVerifier }: CreateAppOptions,
+  { authVerifier, db }: CreateAppOptions,
 ): Promise<FastifyInstance> {
   const app = fastify();
   app.decorate("authVerifier", authVerifier);
@@ -19,6 +23,8 @@ export async function createApp(
     const { userId } = await requirePrincipal(request);
     return { userId };
   });
+
+  if (db) registerClassRoutes(app, db);
 
   return app;
 }

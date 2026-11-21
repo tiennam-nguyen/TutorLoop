@@ -1,5 +1,7 @@
 import { z } from "zod";
-import { idSchema, nonblankTextSchema, timestampSchema, versionSchema, versionedInputSchema } from "./common.ts";
+import {
+  idSchema, nonblankTextSchema, nonblankTextWithoutNulSchema, timestampSchema, versionSchema, versionedInputSchema,
+} from "./common.ts";
 import { studentDtoSchema } from "./students.ts";
 
 const timezoneSchema = nonblankTextSchema.refine((timezone) => {
@@ -13,14 +15,14 @@ const timezoneSchema = nonblankTextSchema.refine((timezone) => {
 }, "Must be an IANA timezone");
 
 export const createClassInputSchema = z.strictObject({
-  name: nonblankTextSchema,
+  name: nonblankTextWithoutNulSchema,
   timezone: timezoneSchema,
   clientRequestId: idSchema,
 });
 export type CreateClassInput = z.infer<typeof createClassInputSchema>;
 
 export const updateClassInputSchema = versionedInputSchema.extend({
-  name: nonblankTextSchema.optional(),
+  name: nonblankTextWithoutNulSchema.optional(),
   timezone: timezoneSchema.optional(),
 });
 export type UpdateClassInput = z.infer<typeof updateClassInputSchema>;

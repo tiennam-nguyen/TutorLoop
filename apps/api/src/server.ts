@@ -22,7 +22,7 @@ try {
     googleClientId: requireEnv("GOOGLE_CLIENT_ID"),
     googleClientSecret: requireEnv("GOOGLE_CLIENT_SECRET"),
   });
-  const app = await createApp({ authVerifier: betterAuthVerifier(auth) });
+  const app = await createApp({ authVerifier: betterAuthVerifier(auth), db });
   app.addHook("onClose", () => db.destroy());
   registerAuthRoutes(app, appUrl.origin, auth.handler);
 
