@@ -175,6 +175,13 @@ export interface Database {
     decided_at: Date | null;
     created_at: Date;
   };
+  proposal_decision_receipts: {
+    actor_user_id: string;
+    client_request_id: string;
+    class_id: string;
+    proposal_run_id: string;
+    input_hash: string;
+  };
   proposal_item_dependencies: {
     proposal_item_id: string;
     depends_on_item_id: string;

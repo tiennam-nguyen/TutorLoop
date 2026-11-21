@@ -1,4 +1,4 @@
-import { type Insertable, type Kysely, sql, type Updateable } from "kysely";
+import { type Insertable, type Kysely, sql, type Transaction, type Updateable } from "kysely";
 import type { Database } from "../database.ts";
 
 type StudentInsert = Insertable<Database["students"]> & { client_request_id: string; create_input_hash: string };
@@ -30,6 +30,19 @@ export function findStudent(db: Kysely<Database>, classId: string, studentId: st
     .where("class_id", "=", classId)
     .where("id", "=", studentId)
     .executeTakeFirst();
+}
+
+export function findStudentByAlias(db: Kysely<Database>, classId: string, alias: string) {
+  return db.selectFrom("students").select("id")
+    .where("class_id", "=", classId).where("ai_alias", "=", alias)
+    .executeTakeFirst();
+}
+
+export function lockStudentsByAlias(db: Transaction<Database>, classId: string, aliases: string[]) {
+  if (!aliases.length) return Promise.resolve([]);
+  return db.selectFrom("students").select(["id", "ai_alias"])
+    .where("class_id", "=", classId).where("ai_alias", "in", aliases)
+    .orderBy("id").forNoKeyUpdate().execute();
 }
 
 export function updateStudentAtVersion(

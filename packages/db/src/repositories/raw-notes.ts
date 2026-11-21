@@ -10,12 +10,14 @@ type CaptureRow = Omit<Insertable<Database["raw_notes"]>, "observed_at" | "clien
 // The pg Date parser drops sub-millisecond precision. Read the exact fraction separately.
 const observedAtMicros = sql<string>`to_char(observed_at, 'US')`.as("observed_at_micros");
 
-export function insertRawNote(db: Transaction<Database>, values: CaptureRow) {
+export function exactTimestamptz(observedAt: string) {
   // ISO year 0000 is 1 BC in PostgreSQL.
-  const timestamp = values.observed_at.startsWith("0000-")
-    ? `0001${values.observed_at.slice(4)} BC`
-    : values.observed_at;
-  return db.insertInto("raw_notes").values({ ...values, observed_at: sql<Date>`${timestamp}::timestamptz` })
+  const timestamp = observedAt.startsWith("0000-") ? `0001${observedAt.slice(4)} BC` : observedAt;
+  return sql<Date>`${timestamp}::timestamptz`;
+}
+
+export function insertRawNote(db: Transaction<Database>, values: CaptureRow) {
+  return db.insertInto("raw_notes").values({ ...values, observed_at: exactTimestamptz(values.observed_at) })
     .onConflict((conflict) => conflict.columns(["author_user_id", "client_request_id"])
       .where("client_request_id", "is not", null).doNothing())
     .returningAll().returning(observedAtMicros).executeTakeFirst();

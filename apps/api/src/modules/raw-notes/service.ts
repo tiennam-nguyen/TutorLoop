@@ -19,7 +19,7 @@ import { requireOwnedClass } from "../../common/ownership.ts";
 type Db = Kysely<Database>;
 type RawNoteRow = NonNullable<Awaited<ReturnType<typeof findRawNote>>>;
 
-function normalizeObservedAt(timestamp: string): string {
+export function normalizeObservedAt(timestamp: string): string {
   const fraction = /\.(\d+)/.exec(timestamp)?.[1] ?? "";
   const wholeSecond = new Date(timestamp.replace(/\.\d+/, ""));
   // PostgreSQL can store six fractional digits, and the DTO uses a four-digit UTC year.

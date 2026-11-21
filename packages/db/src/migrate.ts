@@ -6,6 +6,7 @@ import * as core from "./migrations/001_core.ts";
 import * as proposalsJobsAudit from "./migrations/002_proposals_jobs_audit.ts";
 import * as betterAuth from "./migrations/003_better_auth.ts";
 import * as classStudentCreateReceipts from "./migrations/004_class_student_create_receipts.ts";
+import * as proposalDecisionReceipts from "./migrations/005_proposal_decision_receipts.ts";
 
 export async function runMigrations(db: Kysely<Database>): Promise<void> {
   const migrator = new Migrator({
@@ -17,6 +18,7 @@ export async function runMigrations(db: Kysely<Database>): Promise<void> {
           "002_proposals_jobs_audit": proposalsJobsAudit,
           "003_better_auth": betterAuth,
           "004_class_student_create_receipts": classStudentCreateReceipts,
+          "005_proposal_decision_receipts": proposalDecisionReceipts,
         };
       },
     },
