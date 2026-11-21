@@ -314,3 +314,19 @@ test("void retains the note, initial job, and linked evidence", async () => {
   expect(await db.selectFrom("evidence_events").select("raw_note_id").where("id", "=", evidenceId)
     .executeTakeFirst()).toEqual({ raw_note_id: rawNote.id });
 });
+
+test("manual reprocessing rejects an active job and scopes the note to its owned Class", async () => {
+  const classId = await addClass();
+  const differentClass = await addClass();
+  const captured = await capture(classId);
+  const { rawNote } = createRawNoteResponseSchema.parse(captured.json());
+  const reprocess = (id: string) => app.inject({
+    method: "POST", url: `${notesUrl(id)}/${rawNote.id}/reprocess`, payload: { clientRequestId: randomUUID() },
+  });
+  const busy = await reprocess(classId);
+  expect(busy.statusCode).toBe(409);
+  expect(busy.json()).toMatchObject({ error: { code: "IDEMPOTENCY_CONFLICT" } });
+  const wrongClass = await reprocess(differentClass);
+  expect(wrongClass.statusCode).toBe(404);
+  expect(wrongClass.json()).toMatchObject({ error: { code: "NOT_FOUND" } });
+});

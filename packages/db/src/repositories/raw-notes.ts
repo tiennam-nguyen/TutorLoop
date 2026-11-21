@@ -34,6 +34,15 @@ export function findRawNote(db: Db, classId: string, rawNoteId: string) {
     .where("class_id", "=", classId).where("id", "=", rawNoteId).executeTakeFirst();
 }
 
+export function lockRawNote(db: Transaction<Database>, classId: string, rawNoteId: string) {
+  return db.selectFrom("raw_notes").selectAll().select(observedAtMicros)
+    .where("class_id", "=", classId).where("id", "=", rawNoteId).forUpdate().executeTakeFirst();
+}
+
+export function formatRawNoteObservedAt(row: { observed_at: Date; observed_at_micros: string }): string {
+  return row.observed_at.toISOString().replace(/\.\d+Z$/, `.${row.observed_at_micros}Z`);
+}
+
 export function findCaptureReassessment(db: Db, classId: string, reassessmentId: string) {
   return db.selectFrom("reassessments").select("id")
     .where("class_id", "=", classId).where("id", "=", reassessmentId).executeTakeFirst();

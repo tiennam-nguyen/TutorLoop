@@ -4,9 +4,12 @@ import {
   type VoidRawNoteInput,
 } from "@tutorloop/contracts";
 import type { Database } from "@tutorloop/db/database";
-import { findInitialStructureJob, insertInitialStructureJob } from "@tutorloop/db/repositories/jobs";
 import {
-  findCaptureReassessment, findRawNote, findRawNoteByRequest, insertRawNote, markRawNoteVoided,
+  findInitialStructureJob, findLatestStructureAttempt, insertInitialStructureJob,
+} from "@tutorloop/db/repositories/jobs";
+import { isPersistedProposalRun } from "@tutorloop/db/repositories/proposals";
+import {
+  findCaptureReassessment, findRawNote, findRawNoteByRequest, formatRawNoteObservedAt, insertRawNote, markRawNoteVoided,
 } from "@tutorloop/db/repositories/raw-notes";
 import type { Kysely } from "kysely";
 import type { AuthPrincipal } from "../../auth/principal.ts";
@@ -27,17 +30,13 @@ function normalizeObservedAt(timestamp: string): string {
   return `${wholeSecond.toISOString().slice(0, 19)}.${fraction.slice(0, 6).padEnd(6, "0")}Z`;
 }
 
-function observedAtUtc(row: RawNoteRow): string {
-  return row.observed_at.toISOString().replace(/\.\d+Z$/, `.${row.observed_at_micros}Z`);
-}
-
-function toRawNoteDto(row: RawNoteRow): RawNoteDto {
+export function toRawNoteDto(row: RawNoteRow): RawNoteDto {
   return {
     id: row.id,
     classId: row.class_id,
     body: row.body,
     noteType: row.note_type,
-    observedAt: observedAtUtc(row).replace(/(\.\d{3}\d*?)0+Z$/, "$1Z"),
+    observedAt: formatRawNoteObservedAt(row).replace(/(\.\d{3}\d*?)0+Z$/, "$1Z"),
     reassessmentId: row.reassessment_id,
     voidedAt: row.voided_at?.toISOString() ?? null,
     voidReason: row.void_reason,
@@ -45,8 +44,23 @@ function toRawNoteDto(row: RawNoteRow): RawNoteDto {
   };
 }
 
-function toDetailDto(row: RawNoteRow): RawNoteDetailDto {
-  return { rawNote: toRawNoteDto(row), processing: { status: "QUEUED" } };
+async function toDetailDto(db: Db, row: RawNoteRow): Promise<RawNoteDetailDto> {
+  const rawNote = toRawNoteDto(row);
+  const attempt = await findLatestStructureAttempt(db, row.class_id, row.id);
+  if (!attempt) return { rawNote, processing: { status: "QUEUED" } };
+
+  const { proposalRunId, runStatus, jobStatus } = attempt;
+  if (proposalRunId && isPersistedProposalRun(runStatus)) {
+    return { rawNote, processing: { status: "READY", proposalRunId } };
+  }
+  const run = proposalRunId ? { proposalRunId } : {};
+  if (jobStatus === "DEAD" || runStatus === "FAILED") {
+    return { rawNote, processing: { status: "FAILED", ...run } };
+  }
+  if (jobStatus === "RUNNING" || jobStatus === "FAILED" || runStatus === "PROCESSING") {
+    return { rawNote, processing: { status: "PROCESSING", ...run } };
+  }
+  return { rawNote, processing: { status: "QUEUED" } };
 }
 
 export async function captureRawNote(
@@ -76,7 +90,7 @@ export async function captureRawNote(
 
     // A fresh statement sees the winning transaction's note and job after the unique-index wait.
     const existing = await findRawNoteByRequest(trx, classroom.id, principal.userId, input.clientRequestId);
-    if (!existing || existing.body !== input.body || observedAtUtc(existing) !== observedAt ||
+    if (!existing || existing.body !== input.body || formatRawNoteObservedAt(existing) !== observedAt ||
       existing.note_type !== input.noteType || existing.reassessment_id !== reassessmentId) {
       throw new ApiError("IDEMPOTENCY_CONFLICT", "The request ID was already used with different input.");
     }
@@ -91,7 +105,7 @@ export async function getRawNote(
   const classroom = await requireOwnedClass(db, principal, classId);
   if (idSchema.safeParse(rawNoteId).success) {
     const row = await findRawNote(db, classroom.id, rawNoteId);
-    if (row) return toDetailDto(row);
+    if (row) return toDetailDto(db, row);
   }
   throw new ApiError("NOT_FOUND", "Raw Note not found.");
 }
@@ -103,7 +117,7 @@ export async function voidRawNote(
   if (idSchema.safeParse(rawNoteId).success) {
     const row = await markRawNoteVoided(db, classroom.id, rawNoteId, input.voidReason ?? null)
       ?? await findRawNote(db, classroom.id, rawNoteId);
-    if (row) return toDetailDto(row);
+    if (row) return toDetailDto(db, row);
   }
   throw new ApiError("NOT_FOUND", "Raw Note not found.");
 }

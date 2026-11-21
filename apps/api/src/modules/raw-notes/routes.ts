@@ -1,11 +1,12 @@
 import {
-  createRawNoteInputSchema, nonblankTextWithoutNulSchema, voidRawNoteInputSchema,
+  createRawNoteInputSchema, nonblankTextWithoutNulSchema, reprocessRawNoteInputSchema, voidRawNoteInputSchema,
 } from "@tutorloop/contracts";
 import type { Database } from "@tutorloop/db/database";
 import type { FastifyInstance } from "fastify";
 import type { Kysely } from "kysely";
 import { requirePrincipal } from "../../auth/principal.ts";
 import { ApiError } from "../../common/errors.ts";
+import { reprocessRawNote } from "./reprocess.ts";
 import { captureRawNote, getRawNote, voidRawNote } from "./service.ts";
 
 type ClassRoute = { Params: { classId: string } };
@@ -32,6 +33,14 @@ export function registerRawNoteRoutes(app: FastifyInstance, db: Kysely<Database>
     const principal = await requirePrincipal(request);
     const { classId, rawNoteId } = request.params;
     return getRawNote(db, principal, classId, rawNoteId);
+  });
+
+  app.post<RawNoteRoute>(`${rawNote}/reprocess`, async (request, reply) => {
+    const principal = await requirePrincipal(request);
+    const { classId, rawNoteId } = request.params;
+    const input = reprocessRawNoteInputSchema.safeParse(request.body);
+    if (!input.success) throw new ApiError("VALIDATION_ERROR", "Invalid request.");
+    return reply.code(201).send(await reprocessRawNote(db, principal, classId, rawNoteId, input.data));
   });
 
   app.post<RawNoteRoute>(`${rawNote}/void`, async (request) => {

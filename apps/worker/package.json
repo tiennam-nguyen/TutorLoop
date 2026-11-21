@@ -2,8 +2,21 @@
   "name": "@tutorloop/worker",
   "private": true,
   "type": "module",
+  "exports": {
+    "./worker": "./src/worker.ts"
+  },
   "scripts": {
     "test": "vitest run --config ../../vitest.workspace.ts --project unit",
-    "test:integration": "vitest run --config ../../vitest.workspace.ts --project integration"
+    "test:integration": "vitest run --config ../../vitest.workspace.ts --project integration",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tutorloop/ai": "workspace:*",
+    "@tutorloop/contracts": "workspace:*",
+    "@tutorloop/db": "workspace:*",
+    "kysely": "^0.29.9"
+  },
+  "devDependencies": {
+    "@tutorloop/testkit": "workspace:*"
   }
 }

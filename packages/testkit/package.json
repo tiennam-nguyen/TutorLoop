@@ -4,12 +4,15 @@
   "type": "module",
   "exports": {
     "./builders": "./src/builders.ts",
+    "./fake-note-structurer": "./src/fake-note-structurer.ts",
     "./postgres": "./src/postgres.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@testcontainers/postgresql": "^12.2.2"
+    "@testcontainers/postgresql": "^12.2.2",
+    "@tutorloop/ai": "workspace:*",
+    "@tutorloop/contracts": "workspace:*"
   }
 }
