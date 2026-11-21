@@ -8,7 +8,7 @@ import type {
   ReassessmentTargetStatus,
   StudentIssueState,
 } from "@tutorloop/contracts";
-import type { ColumnType, Generated } from "kysely";
+import type { ColumnType, Generated, GeneratedAlways } from "kysely";
 
 type JsonObject = Record<string, unknown>;
 
@@ -74,6 +74,7 @@ export interface Database {
   };
   student_issue_transitions: {
     id: string;
+    insertion_order: GeneratedAlways<string>;
     class_id: string;
     student_issue_id: string;
     from_state: StudentIssueState | null;

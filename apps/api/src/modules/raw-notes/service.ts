@@ -9,7 +9,7 @@ import {
 } from "@tutorloop/db/repositories/jobs";
 import { isPersistedProposalRun } from "@tutorloop/db/repositories/proposals";
 import {
-  findCaptureReassessment, findRawNote, findRawNoteByRequest, formatRawNoteObservedAt, insertRawNote, markRawNoteVoided,
+  findCaptureReassessment, findRawNote, findRawNoteByRequest, insertRawNote, markRawNoteVoided,
 } from "@tutorloop/db/repositories/raw-notes";
 import type { Kysely } from "kysely";
 import type { AuthPrincipal } from "../../auth/principal.ts";
@@ -36,7 +36,7 @@ export function toRawNoteDto(row: RawNoteRow): RawNoteDto {
     classId: row.class_id,
     body: row.body,
     noteType: row.note_type,
-    observedAt: formatRawNoteObservedAt(row).replace(/(\.\d{3}\d*?)0+Z$/, "$1Z"),
+    observedAt: row.observed_at_utc.replace(/(\.\d{3}\d*?)0+Z$/, "$1Z"),
     reassessmentId: row.reassessment_id,
     voidedAt: row.voided_at?.toISOString() ?? null,
     voidReason: row.void_reason,
@@ -90,7 +90,7 @@ export async function captureRawNote(
 
     // A fresh statement sees the winning transaction's note and job after the unique-index wait.
     const existing = await findRawNoteByRequest(trx, classroom.id, principal.userId, input.clientRequestId);
-    if (!existing || existing.body !== input.body || formatRawNoteObservedAt(existing) !== observedAt ||
+    if (!existing || existing.body !== input.body || existing.observed_at_utc !== observedAt ||
       existing.note_type !== input.noteType || existing.reassessment_id !== reassessmentId) {
       throw new ApiError("IDEMPOTENCY_CONFLICT", "The request ID was already used with different input.");
     }

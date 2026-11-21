@@ -143,6 +143,23 @@ test("preserves valid UTC year zero when applying the supplied offset", async ()
     .toBe("0000-12-31T23:00:00.000Z");
 });
 
+test("keeps the year-zero leap day exact through capture, retrieval, and equivalent-offset replay", async () => {
+  const classId = await addClass();
+  const input = { ...observation(), observedAt: "0000-02-29T16:00:00.123456+07:00" };
+  const expected = "0000-02-29T09:00:00.123456Z";
+  const initial = await capture(classId, input);
+  expect(initial.statusCode, initial.body).toBe(201);
+  const { rawNote } = createRawNoteResponseSchema.parse(initial.json());
+  const fetched = await app.inject(`${notesUrl(classId)}/${rawNote.id}`);
+  expect(fetched.statusCode, fetched.body).toBe(200);
+  const reread = rawNoteDetailDtoSchema.parse(fetched.json()).rawNote;
+  const replay = await capture(classId, { ...input, observedAt: expected });
+  expect.soft(rawNote.observedAt).toBe(expected);
+  expect.soft(reread.observedAt).toBe(expected);
+  expect(replay.statusCode, replay.body).toBe(201);
+  expect(replay.json()).toEqual(initial.json());
+});
+
 test("rejects changed capture fields on an existing request key", async () => {
   const classId = await addClass();
   const reassessmentId = await addReassessment(classId);

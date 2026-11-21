@@ -9,7 +9,7 @@ import {
   findProposalRunBySourceJob, insertProcessingRun, insertProposalItemDependency, insertProposalItems,
   isPersistedProposalRun, markProcessingRunReady,
 } from "@tutorloop/db/repositories/proposals";
-import { findRawNote, formatRawNoteObservedAt } from "@tutorloop/db/repositories/raw-notes";
+import { findRawNote } from "@tutorloop/db/repositories/raw-notes";
 import { listActiveStudents } from "@tutorloop/db/repositories/students";
 import type { Kysely, Transaction } from "kysely";
 
@@ -61,7 +61,7 @@ async function loadContext(
     classId,
     rawNoteId: note.id,
     body: note.body,
-    observedAt: formatRawNoteObservedAt(note),
+    observedAt: note.observed_at_utc,
     students: students.map((student) => ({
       studentId: student.id, displayLabel: student.display_label, aiAlias: student.ai_alias,
     })),

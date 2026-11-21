@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   type ProposalDecisionInput, type ProposalDraftItemV1, type StudentIssueState,
-  proposalRunDetailDtoSchema, studentIssueDtoSchema,
+  proposalRunDetailDtoSchema, studentIssueDtoSchema, studentOverviewDtoSchema,
 } from "@tutorloop/contracts";
 import { createDb } from "@tutorloop/db/client";
 import { runMigrations } from "@tutorloop/db/migrate";
@@ -502,6 +502,47 @@ test("reopening a resolved issue appends a transition and leaves earlier history
   expect(history).toMatchObject([
     { from_state: "OPEN", to_state: "RESOLVED_FOR_NOW", proposal_item_id: null, reason: "Correct on recheck", actor_user_id: teacherId },
     { from_state: "RESOLVED_FOR_NOW", to_state: "OPEN", proposal_item_id: run.ids[0], actor_user_id: teacherId },
+  ]);
+});
+
+test("Student overview preserves the application order of two transitions from one approved batch", async () => {
+  const classId = await addClass();
+  const studentId = await addStudent(classId);
+  const issue = await addIssue(classId, studentId);
+  const run = await addRun(classId, [
+    { ...transition(issue.id, "IMPROVING"), key: "improve" },
+    { ...transition(issue.id, "RESOLVED_FOR_NOW"), key: "resolve" },
+  ], [[1, 0]]);
+  const firstId = "00000000-0000-4000-8000-000000000002";
+  const secondId = "00000000-0000-4000-8000-000000000001";
+  await sql`
+    CREATE FUNCTION use_reverse_transition_ids() RETURNS trigger LANGUAGE plpgsql AS $function$
+    BEGIN
+      NEW.id := CASE WHEN NEW.to_state = 'IMPROVING'
+        THEN '00000000-0000-4000-8000-000000000002'::uuid ELSE '00000000-0000-4000-8000-000000000001'::uuid END;
+      RETURN NEW;
+    END
+    $function$;
+    CREATE TRIGGER use_reverse_transition_ids BEFORE INSERT ON student_issue_transitions
+      FOR EACH ROW EXECUTE FUNCTION use_reverse_transition_ids();
+  `.execute(db);
+  try {
+    const applied = await decisions(run, [approve(run.ids[1]), approve(run.ids[0])]);
+    expect(applied.statusCode, applied.body).toBe(200);
+  } finally {
+    await sql`
+      DROP TRIGGER use_reverse_transition_ids ON student_issue_transitions;
+      DROP FUNCTION use_reverse_transition_ids();
+    `.execute(db);
+  }
+  expect(await readIssue(issue.id)).toMatchObject({ state: "RESOLVED_FOR_NOW", version: 3 });
+  const response = await app.inject(`/api/v1/classes/${classId}/students/${studentId}/overview`);
+  expect(response.statusCode, response.body).toBe(200);
+  const { transitions } = studentOverviewDtoSchema.parse(response.json());
+  expect(transitions).toHaveLength(2);
+  expect(transitions[0].createdAt).toBe(transitions[1].createdAt);
+  expect(transitions.map(({ id, fromState, toState }) => [id, fromState, toState])).toEqual([
+    [firstId, "OPEN", "IMPROVING"], [secondId, "IMPROVING", "RESOLVED_FOR_NOW"],
   ]);
 });
 

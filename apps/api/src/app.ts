@@ -4,6 +4,7 @@ import type { Kysely } from "kysely";
 import { requirePrincipal, type AuthVerifier } from "./auth/principal.ts";
 import { registerApiErrorHandlers } from "./common/errors.ts";
 import { registerClassRoutes } from "./modules/classes/routes.ts";
+import { registerProjectionRoutes } from "./modules/projections/routes.ts";
 import { registerProposalRoutes } from "./modules/proposals/routes.ts";
 import { registerRawNoteRoutes } from "./modules/raw-notes/routes.ts";
 
@@ -30,6 +31,7 @@ export async function createApp(
     registerClassRoutes(app, db);
     registerRawNoteRoutes(app, db);
     registerProposalRoutes(app, db);
+    registerProjectionRoutes(app, db);
   }
 
   return app;

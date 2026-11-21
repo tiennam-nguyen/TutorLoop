@@ -10,6 +10,7 @@
     "./repositories/evidence": "./src/repositories/evidence.ts",
     "./repositories/issues": "./src/repositories/issues.ts",
     "./repositories/jobs": "./src/repositories/jobs.ts",
+    "./repositories/projections": "./src/repositories/projections.ts",
     "./repositories/proposals": "./src/repositories/proposals.ts",
     "./repositories/raw-notes": "./src/repositories/raw-notes.ts",
     "./repositories/students": "./src/repositories/students.ts"

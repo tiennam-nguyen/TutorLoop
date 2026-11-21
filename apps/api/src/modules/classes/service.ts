@@ -26,7 +26,7 @@ function toClassDto(row: ClassRow): ClassDto {
   };
 }
 
-function toStudentDto(row: StudentRow): StudentDto {
+export function toStudentDto(row: Omit<StudentRow, "client_request_id" | "create_input_hash">): StudentDto {
   return {
     id: row.id,
     classId: row.class_id,
