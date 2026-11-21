@@ -7,7 +7,9 @@
     "./database": "./src/database.ts",
     "./migrate": "./src/migrate.ts",
     "./repositories/classes": "./src/repositories/classes.ts",
+    "./repositories/jobs": "./src/repositories/jobs.ts",
     "./repositories/proposals": "./src/repositories/proposals.ts",
+    "./repositories/raw-notes": "./src/repositories/raw-notes.ts",
     "./repositories/students": "./src/repositories/students.ts"
   },
   "scripts": {

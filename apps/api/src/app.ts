@@ -4,6 +4,7 @@ import type { Kysely } from "kysely";
 import { requirePrincipal, type AuthVerifier } from "./auth/principal.ts";
 import { registerApiErrorHandlers } from "./common/errors.ts";
 import { registerClassRoutes } from "./modules/classes/routes.ts";
+import { registerRawNoteRoutes } from "./modules/raw-notes/routes.ts";
 
 export type CreateAppOptions = {
   authVerifier: AuthVerifier;
@@ -24,7 +25,10 @@ export async function createApp(
     return { userId };
   });
 
-  if (db) registerClassRoutes(app, db);
+  if (db) {
+    registerClassRoutes(app, db);
+    registerRawNoteRoutes(app, db);
+  }
 
   return app;
 }
