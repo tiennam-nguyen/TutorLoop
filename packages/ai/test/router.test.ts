@@ -250,6 +250,27 @@ test("Groq sends a strict wire schema and decodes null optional timestamps befor
   expect((await route(note)).draft).toEqual({ schemaVersion: "1", items: [evidence] });
 });
 
+test("Groq receives a flat strict union for nullable evidence issue references", async () => {
+  type ItemBranch = { properties: { type: { enum: string[] }; studentIssueRef?: unknown } };
+  let branches: ItemBranch[] | undefined;
+  const fetcher = stubFetch((_url, body) => {
+    const format = body.response_format as {
+      json_schema: { schema: { properties: { items: { items: { anyOf: ItemBranch[] } } } } };
+    };
+    branches = format.json_schema.schema.properties.items.items.anyOf;
+    return Response.json({ choices: [{ message: { content: JSON.stringify(empty) } }] });
+  });
+  const route = createConfiguredNoteRouter({ ...env, AI_PRIMARY_PROVIDER: groq.provider, AI_PRIMARY_MODEL: groq.model,
+    AI_FALLBACK_PROVIDER: gemini.provider, AI_FALLBACK_MODEL: gemini.model }, fetcher);
+  await route(note);
+  const evidence = branches?.find(({ properties }) => properties.type.enum.includes("CREATE_EVIDENCE"));
+  expect(evidence?.properties.studentIssueRef).toMatchObject({ anyOf: [
+    { type: "object", properties: { kind: { enum: ["EXISTING"] }, studentIssueId: { type: "string" } } },
+    { type: "object", properties: { kind: { enum: ["PROPOSED"] }, proposalKey: { type: "string" } } },
+    { type: "null" },
+  ] });
+});
+
 test.each([
   [openRouter, "https://openrouter.ai/api/v1/chat/completions"],
   [nvidia, "https://integrate.api.nvidia.com/v1/chat/completions"],
