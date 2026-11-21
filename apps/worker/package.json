@@ -1,0 +1,9 @@
+{
+  "name": "@tutorloop/worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run --config ../../vitest.workspace.ts --project unit",
+    "test:integration": "vitest run --config ../../vitest.workspace.ts --project integration"
+  }
+}

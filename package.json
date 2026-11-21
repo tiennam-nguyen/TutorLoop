@@ -1,0 +1,28 @@
+{
+  "name": "tutorloop",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=26 <27"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --recursive --if-present run dev",
+    "lint": "eslint .",
+    "typecheck": "pnpm --recursive --if-present run typecheck",
+    "test": "vitest run --config vitest.workspace.ts --project unit",
+    "test:integration": "vitest run --config vitest.workspace.ts --project integration",
+    "test:e2e": "playwright test",
+    "benchmark:ai": "node packages/ai/src/benchmark/run.ts",
+    "db:migrate": "node packages/db/src/migrate.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.57.0",
+    "@types/node": "^26.0.0",
+    "eslint": "^10.15.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.48.0",
+    "vitest": "^4.1.0"
+  }
+}

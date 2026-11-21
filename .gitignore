@@ -1,0 +1,27 @@
+.env
+.env.*
+!.env.example
+
+/2026-11-20-tutorloop-mvp-implementation-plan.md
+/TutorLoop — Product Specification v0.1.md
+/TutorLoop_Technical_Design_v0.2.md
+/docs/specs/
+/docs/superpowers/
+/.superpowers/
+/artifacts/
+
+node_modules/
+.pnpm-store/
+dist/
+build/
+.next/
+out/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+next-env.d.ts
+*.log
+*.local
+.DS_Store
+Thumbs.db

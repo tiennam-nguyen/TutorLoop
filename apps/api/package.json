@@ -1,0 +1,14 @@
+{
+  "name": "@tutorloop/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config ../../vitest.workspace.ts --project unit",
+    "test:integration": "vitest run --config ../../vitest.workspace.ts --project integration"
+  },
+  "dependencies": {
+    "fastify": "^5.8.0"
+  }
+}

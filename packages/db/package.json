@@ -1,0 +1,8 @@
+{
+  "name": "@tutorloop/db",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:integration": "vitest run --config ../../vitest.workspace.ts --project integration"
+  }
+}
