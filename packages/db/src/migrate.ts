@@ -3,13 +3,14 @@ import { Migrator } from "kysely/migration";
 import { createDb } from "./client.ts";
 import type { Database } from "./database.ts";
 import * as core from "./migrations/001_core.ts";
+import * as proposalsJobsAudit from "./migrations/002_proposals_jobs_audit.ts";
 
 export async function runMigrations(db: Kysely<Database>): Promise<void> {
   const migrator = new Migrator({
     db,
     provider: {
       async getMigrations() {
-        return { "001_core": core };
+        return { "001_core": core, "002_proposals_jobs_audit": proposalsJobsAudit };
       },
     },
   });

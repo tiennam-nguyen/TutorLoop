@@ -1,11 +1,16 @@
 import type {
   EvidenceDto,
+  ProposalItemStatus,
+  ProposalItemType,
+  ProposalRunStatus,
   RawNoteType,
   ReassessmentStatus,
   ReassessmentTargetStatus,
   StudentIssueState,
 } from "@tutorloop/contracts";
-import type { Generated } from "kysely";
+import type { ColumnType, Generated } from "kysely";
+
+type JsonObject = Record<string, unknown>;
 
 export interface Database {
   classes: {
@@ -124,5 +129,93 @@ export interface Database {
     intervention_id: string | null;
     target_status: ReassessmentTargetStatus;
     skip_reason: string | null;
+  };
+  jobs: {
+    id: string;
+    kind: string;
+    dedupe_key: string;
+    payload: JsonObject;
+    status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "DEAD";
+    attempts: Generated<number>;
+    run_after: Date;
+    locked_at: Date | null;
+    locked_by: string | null;
+    last_error_code: string | null;
+    created_at: Date;
+    updated_at: Date;
+  };
+  proposal_runs: {
+    id: string;
+    class_id: string;
+    raw_note_id: string;
+    source_job_id: string;
+    status: ProposalRunStatus;
+    schema_version: string;
+    created_at: Date;
+    updated_at: Date;
+  };
+  proposal_items: {
+    id: string;
+    class_id: string;
+    proposal_run_id: string;
+    item_type: ProposalItemType;
+    original_payload: ColumnType<JsonObject, JsonObject, never>;
+    teacher_patch: JsonObject | null;
+    status: ProposalItemStatus;
+    target_entity_type: string | null;
+    target_entity_id: string | null;
+    base_version: number | null;
+    result_entity_type: string | null;
+    result_entity_id: string | null;
+    decided_by_user_id: string | null;
+    decided_at: Date | null;
+    created_at: Date;
+  };
+  proposal_item_dependencies: {
+    proposal_item_id: string;
+    depends_on_item_id: string;
+  };
+  ai_runs: {
+    id: string;
+    class_id: string;
+    proposal_run_id: string;
+    task_type: string;
+    provider: string;
+    model: string;
+    prompt_version: string;
+    schema_version: string;
+    redaction_version: string;
+    input_hash: string;
+    status: "SUCCESS" | "TRANSIENT_FAILURE" | "PERMANENT_FAILURE";
+    latency_ms: number | null;
+    usage_json: Record<string, number> | null;
+    error_code: string | null;
+    created_at: Date;
+  };
+  audit_log: {
+    id: string;
+    class_id: string;
+    actor_user_id: string;
+    action: string;
+    entity_type: string;
+    entity_id: string;
+    created_at: Date;
+  };
+  product_events: {
+    id: string;
+    class_id: string;
+    actor_user_id: string;
+    event_name:
+      | "raw_note_created"
+      | "proposal_review_opened"
+      | "proposal_item_approved"
+      | "proposal_item_edited"
+      | "proposal_item_rejected"
+      | "student_view_opened"
+      | "class_issue_view_opened"
+      | "reassessment_due_opened"
+      | "history_opened";
+    entity_id: string | null;
+    created_at: Date;
   };
 }
