@@ -2,7 +2,12 @@
   "name": "@tutorloop/domain",
   "private": true,
   "type": "module",
+  "exports": "./src/index.ts",
   "scripts": {
-    "test": "vitest run --config ../../vitest.workspace.ts --project unit"
+    "test": "vitest run --config ../../vitest.workspace.ts --project unit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tutorloop/contracts": "workspace:*"
   }
 }
