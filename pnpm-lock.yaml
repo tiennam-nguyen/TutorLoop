@@ -14,6 +14,12 @@ importers:
       '@playwright/test':
         specifier: ^1.57.0
         version: 1.57.0
+      '@tutorloop/db':
+        specifier: workspace:*
+        version: link:packages/db
+      '@tutorloop/testkit':
+        specifier: workspace:*
+        version: link:packages/testkit
       '@types/node':
         specifier: ^26.0.0
         version: 26.6.6
@@ -60,6 +66,12 @@ importers:
 
   apps/web:
     dependencies:
+      '@tutorloop/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      better-auth:
+        specifier: 1.7.26
+        version: 1.7.26(next@16.4.6(@babel/core@7.29.13(supports-color@7.2.0))(@playwright/test@1.57.0)(@types/node@26.6.6)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(pg@8.23.1)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(vitest@4.1.12(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.1)))
       next:
         specifier: ^16.4.6
         version: 16.4.6(@babel/core@7.29.13(supports-color@7.2.0))(@playwright/test@1.57.0)(@types/node@26.6.6)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
