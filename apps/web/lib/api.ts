@@ -1,13 +1,21 @@
 import {
   apiErrorBodySchema,
+  canonicalIssueDetailDtoSchema,
+  canonicalIssueListDtoSchema,
   classDetailDtoSchema,
   classDtoSchema,
   classListDtoSchema,
+  createRawNoteResponseSchema,
   meDtoSchema,
+  proposalRunDetailDtoSchema,
+  rawNoteDetailDtoSchema,
   studentDtoSchema,
   type AddStudentInput,
   type ApiErrorCode,
   type CreateClassInput,
+  type CreateRawNoteInput,
+  type ProposalDecisionBatchInput,
+  type ReprocessRawNoteInput,
   type UpdateStudentInput,
 } from "@tutorloop/contracts";
 
@@ -94,4 +102,40 @@ export function renameStudent(classId: string, studentId: string, input: UpdateS
 
 export function archiveStudent(classId: string, studentId: string, expectedVersion: number) {
   return archive(studentPath(classId, studentId), expectedVersion);
+}
+
+function rawNotePath(classId: string, rawNoteId: string) {
+  return `${classPath(classId)}/raw-notes/${encodeURIComponent(rawNoteId)}`;
+}
+
+function proposalPath(classId: string, runId: string) {
+  return `${classPath(classId)}/proposal-runs/${encodeURIComponent(runId)}`;
+}
+
+export function createRawNote(classId: string, input: CreateRawNoteInput) {
+  return read(`${classPath(classId)}/raw-notes`, createRawNoteResponseSchema, json("POST", input));
+}
+
+export function getRawNote(classId: string, rawNoteId: string, signal?: AbortSignal) {
+  return read(rawNotePath(classId, rawNoteId), rawNoteDetailDtoSchema, { signal });
+}
+
+export function reprocessRawNote(classId: string, rawNoteId: string, input: ReprocessRawNoteInput) {
+  return read(`${rawNotePath(classId, rawNoteId)}/reprocess`, createRawNoteResponseSchema, json("POST", input));
+}
+
+export function getProposalRun(classId: string, runId: string, signal?: AbortSignal) {
+  return read(proposalPath(classId, runId), proposalRunDetailDtoSchema, { signal });
+}
+
+export function applyProposalDecisions(classId: string, runId: string, input: ProposalDecisionBatchInput) {
+  return read(`${proposalPath(classId, runId)}/decisions`, proposalRunDetailDtoSchema, json("POST", input));
+}
+
+export function listCanonicalIssues(classId: string, signal?: AbortSignal) {
+  return read(`${classPath(classId)}/issues`, canonicalIssueListDtoSchema, { signal });
+}
+
+export function getCanonicalIssue(classId: string, issueId: string, signal?: AbortSignal) {
+  return read(`${classPath(classId)}/issues/${encodeURIComponent(issueId)}`, canonicalIssueDetailDtoSchema, { signal });
 }

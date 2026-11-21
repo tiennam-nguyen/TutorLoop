@@ -4,6 +4,7 @@ import type { ClassDetailDto } from "@tutorloop/contracts";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppShell } from "../../../components/app-shell";
+import { ClassCaptures } from "../../../components/quick-capture";
 import { StudentRoster } from "../../../components/student-roster";
 import { archiveClass, getClassDetail } from "../../../lib/api";
 import { useWorkspaceError } from "../../../lib/session";
@@ -71,6 +72,7 @@ function ClassWorkspace({ classId }: { classId: string }) {
         )}
       </div>
       {error && <p role="alert">{error}</p>}
+      <ClassCaptures classroom={classroom} archiving={archiving} />
       <StudentRoster classroom={classroom} archivingClass={archiving} />
     </>
   );

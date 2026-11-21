@@ -1,26 +1,37 @@
 import { createDb } from "@tutorloop/db/client";
 import { runMigrations } from "@tutorloop/db/migrate";
+import { FakeNoteStructurer } from "@tutorloop/testkit/fake-note-structurer";
 import { startPostgres } from "@tutorloop/testkit/postgres";
 import { createApp } from "../../../apps/api/src/app.ts";
 import { createBetterAuth } from "../../../apps/api/src/auth/better-auth.ts";
 import type { AuthVerifier } from "../../../apps/api/src/auth/principal.ts";
 import { registerAuthRoutes } from "../../../apps/api/src/auth/routes.ts";
+import { runWorker } from "../../../apps/worker/src/worker.ts";
+import { captureFixtures } from "./capture-fixtures.ts";
 
 const testTeacher: AuthVerifier = async (request) => {
   const cookies = request.headers.cookie?.split(";").map((cookie) => cookie.trim());
-  return cookies?.includes("tutorloop-e2e=teacher") ? { userId: "e2e-teacher" } : null;
+  const session = cookies?.find((cookie) => cookie.startsWith("tutorloop-e2e="))?.split("=")[1];
+  if (session === "teacher" || (session && /^capture-[a-f0-9-]{36}$/.test(session))) {
+    return { userId: `e2e-${session}` };
+  }
+  return null;
 };
 
 export async function startTestApi(origin: string, port: number) {
   const postgres = await startPostgres();
   const db = createDb(postgres.getConnectionUri());
   let app: Awaited<ReturnType<typeof createApp>> | undefined;
+  const worker = new AbortController();
+  let workerDone: Promise<void> | undefined;
 
   async function close() {
+    worker.abort();
     try {
       await app?.close();
     } finally {
       try {
+        await workerDone;
         await db.destroy();
       } finally {
         await postgres.stop();
@@ -39,6 +50,16 @@ export async function startTestApi(origin: string, port: number) {
     });
     registerAuthRoutes(app, origin, auth.handler);
     await app.listen({ host: "127.0.0.1", port });
+    const startedAt = Date.now();
+    workerDone = runWorker({
+      db,
+      structurer: new FakeNoteStructurer(captureFixtures(worker.signal)),
+      // Exercise the actual retry scheduling, including the five-minute backoff, within a browser test.
+      now: () => new Date(startedAt + (Date.now() - startedAt) * 30),
+    }, { signal: worker.signal, pollIntervalMs: 100 }).catch((error: unknown) => {
+      console.error("E2E worker stopped", error);
+      process.exitCode = 1;
+    });
     return { app, db, close };
   } catch (error) {
     await close();
