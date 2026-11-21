@@ -2,6 +2,7 @@
 
 import { addStudentInputSchema, updateStudentInputSchema, type ClassDetailDto, type StudentDto } from "@tutorloop/contracts";
 import { useRef, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { addStudent, archiveStudent, renameStudent } from "../lib/api";
 import { useWorkspaceError } from "../lib/session";
 
@@ -133,7 +134,9 @@ function StudentRow({ student, archivedClass, archivingClass, onUpdated, onArchi
   return (
     <li className="student-row">
       <div className="row">
-        <span>{student.displayLabel}</span>
+        <Link href={`/classes/${encodeURIComponent(student.classId)}/students/${encodeURIComponent(student.id)}`}>
+          {student.displayLabel}
+        </Link>
         {!archivedClass && name === null && (
           <div className="actions">
             <button type="button" disabled={disabled} onClick={() => {

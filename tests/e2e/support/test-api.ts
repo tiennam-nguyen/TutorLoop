@@ -7,7 +7,7 @@ import { createBetterAuth } from "../../../apps/api/src/auth/better-auth.ts";
 import type { AuthVerifier } from "../../../apps/api/src/auth/principal.ts";
 import { registerAuthRoutes } from "../../../apps/api/src/auth/routes.ts";
 import { runWorker } from "../../../apps/worker/src/worker.ts";
-import { captureFixtures } from "./capture-fixtures.ts";
+import { captureFixtures, releaseSharedCapture } from "./capture-fixtures.ts";
 
 const testTeacher: AuthVerifier = async (request) => {
   const cookies = request.headers.cookie?.split(";").map((cookie) => cookie.trim());
@@ -49,6 +49,10 @@ export async function startTestApi(origin: string, port: number) {
       googleClientSecret: "tutorloop-e2e-google-secret",
     });
     registerAuthRoutes(app, origin, auth.handler);
+    app.post("/__e2e/release-shared-capture", async () => {
+      releaseSharedCapture();
+      return { released: true };
+    });
     await app.listen({ host: "127.0.0.1", port });
     const startedAt = Date.now();
     workerDone = runWorker({

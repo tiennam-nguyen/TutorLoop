@@ -158,7 +158,19 @@ label {
 }
 
 .classes-grid .row:last-child, .student-row:last-child { padding-bottom: 0; }
-.classes-grid .row a, .student-row .row > span { font-weight: 650; }
+.classes-grid .row a, .student-row .row > a { font-weight: 650; }
+.class-links { margin-bottom: 1.25rem; }
+.table-scroll { overflow-x: auto; }
+.issue-table { width: 100%; border-collapse: collapse; text-align: left; }
+.issue-table th, .issue-table td { padding: 0.75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+.issue-table th:not(:first-child), .issue-table td:not(:first-child) { text-align: left; }
+.issue-table tbody tr:last-child td { border-bottom: 0; }
+.evidence-list, .timeline { margin: 0; padding-left: 1.25rem; }
+.evidence-list li + li, .timeline li + li { margin-top: 0.75rem; }
+.timeline { display: grid; gap: 0.75rem; }
+.student-view { display: grid; gap: 1.25rem; }
+.issue-list li { padding-block: 0.6rem; border-top: 1px solid var(--border); }
+.source-note { margin-top: 0.5rem; }
 
 .actions, .inline-form {
   display: flex;

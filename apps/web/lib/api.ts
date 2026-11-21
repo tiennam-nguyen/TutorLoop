@@ -10,6 +10,7 @@ import {
   proposalRunDetailDtoSchema,
   rawNoteDetailDtoSchema,
   studentDtoSchema,
+  studentOverviewDtoSchema,
   type AddStudentInput,
   type ApiErrorCode,
   type CreateClassInput,
@@ -138,4 +139,8 @@ export function listCanonicalIssues(classId: string, signal?: AbortSignal) {
 
 export function getCanonicalIssue(classId: string, issueId: string, signal?: AbortSignal) {
   return read(`${classPath(classId)}/issues/${encodeURIComponent(issueId)}`, canonicalIssueDetailDtoSchema, { signal });
+}
+
+export function getStudentOverview(classId: string, studentId: string, signal?: AbortSignal) {
+  return read(`${studentPath(classId, studentId)}/overview`, studentOverviewDtoSchema, { signal });
 }

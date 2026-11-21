@@ -77,15 +77,24 @@ test.describe("capture review", () => {
 
     const recent = page.getByRole("region", { name: "Recent captures" });
     const pollTimes: number[] = [];
+    const completedPolls: number[] = [];
     page.on("request", (request) => {
       if (request.method() === "GET" && new URL(request.url()).pathname.startsWith(`${api}/raw-notes/`)) {
         pollTimes.push(performance.now());
+      }
+    });
+    page.on("response", (response) => {
+      if (response.request().method() === "GET" && response.ok()
+        && new URL(response.url()).pathname.startsWith(`${api}/raw-notes/`)) {
+        completedPolls.push(performance.now());
       }
     });
     await saveNote(page, notes.shared);
     await expect(recent.getByText(notes.shared, { exact: true })).toBeVisible({ timeout: 1_500 });
     await expect(reviewLink(page)).toHaveCount(0);
     await expect(recent.getByText("Saved · Structuring…")).toBeVisible();
+    await expect.poll(() => completedPolls.length).toBeGreaterThanOrEqual(2);
+    await body(await page.request.post("http://127.0.0.1:3211/__e2e/release-shared-capture"));
     await expect(reviewLink(page)).toBeVisible();
     expect(pollTimes.length).toBeGreaterThanOrEqual(2);
     expect(pollTimes[1] - pollTimes[0]).toBeGreaterThanOrEqual(1_850);

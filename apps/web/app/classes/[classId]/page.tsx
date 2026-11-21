@@ -1,6 +1,7 @@
 "use client";
 
 import type { ClassDetailDto } from "@tutorloop/contracts";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppShell } from "../../../components/app-shell";
@@ -72,6 +73,9 @@ function ClassWorkspace({ classId }: { classId: string }) {
         )}
       </div>
       {error && <p role="alert">{error}</p>}
+      <nav className="class-links" aria-label="Class views">
+        <Link href={`/classes/${encodeURIComponent(classroom.id)}/issues`}>Class issues</Link>
+      </nav>
       <ClassCaptures classroom={classroom} archiving={archiving} />
       <StudentRoster classroom={classroom} archivingClass={archiving} />
     </>

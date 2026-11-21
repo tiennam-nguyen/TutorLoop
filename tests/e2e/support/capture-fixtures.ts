@@ -1,9 +1,9 @@
 import type { StructureNoteInput } from "../../../packages/ai/src/contract.ts";
 import type { ProposalDraftItemV1, ProposalDraftV1, StudentRef } from "../../../packages/contracts/src/index.ts";
-import { setTimeout } from "node:timers/promises";
 
 export const notes = {
   shared: "An và Bình lại sai dấu khi chuyển vế.",
+  projection: "An và Bình cần xem lại lỗi dấu khi chuyển vế.",
   ambiguousStudent: "Minh lại sai dấu khi chuyển vế.",
   unknownStudent: "Lan quên đổi dấu khi chuyển vế.",
   seedIssues: "Cần theo dõi hai lỗi khác nhau về dấu.",
@@ -13,6 +13,27 @@ export const notes = {
 };
 
 const draft = (items: ProposalDraftItemV1[]): ProposalDraftV1 => ({ schemaVersion: "1", items });
+
+let sharedReleased = false;
+let releasePendingShared: (() => void) | undefined;
+
+export function releaseSharedCapture() {
+  sharedReleased = true;
+  releasePendingShared?.();
+}
+
+async function waitForSharedCapture(signal: AbortSignal) {
+  if (sharedReleased) return;
+  await new Promise<void>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason ?? new Error("E2E worker stopped"));
+    releasePendingShared = () => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  releasePendingShared = undefined;
+}
 
 export function captureFixtures(signal: AbortSignal) {
   const retries = new Map<string, number>();
@@ -26,8 +47,9 @@ export function captureFixtures(signal: AbortSignal) {
 
     switch (input.body) {
       case notes.shared:
-        // Leave two browser polls worth of time to observe in-progress structuring.
-        await setTimeout(4_600, undefined, { signal });
+      case notes.projection:
+        // The browser releases this test-only gate after two completed status reads.
+        if (input.body === notes.shared) await waitForSharedCapture(signal);
         return draft([
           { key: "signs", type: "CREATE_CANONICAL_ISSUE", label: "Sai dấu khi chuyển vế" },
           ...["An", "Bình"].flatMap((name): ProposalDraftItemV1[] => [
@@ -41,6 +63,8 @@ export function captureFixtures(signal: AbortSignal) {
               observationText: `${name} sai dấu khi chuyển vế.`,
             },
           ]),
+          ...(input.body === notes.projection ? [{ key: "rejected-observation", type: "CREATE_EVIDENCE" as const,
+            studentRef: resolved("An"), observationText: "Rejected fixture observation must stay a proposal." }] : []),
         ]);
       case notes.ambiguousStudent:
         return draft([{
