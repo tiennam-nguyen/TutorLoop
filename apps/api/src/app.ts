@@ -1,17 +1,24 @@
 import fastify, { type FastifyInstance } from "fastify";
-import type { AuthVerifier } from "./auth/principal.ts";
+import { requirePrincipal, type AuthVerifier } from "./auth/principal.ts";
+import { registerApiErrorHandlers } from "./common/errors.ts";
 
 export type CreateAppOptions = {
   authVerifier: AuthVerifier;
 };
 
 export async function createApp(
-  _options: CreateAppOptions,
+  { authVerifier }: CreateAppOptions,
 ): Promise<FastifyInstance> {
-  // The health route is public. Authenticated routes will use the verifier.
   const app = fastify();
+  app.decorate("authVerifier", authVerifier);
+  registerApiErrorHandlers(app);
 
   app.get("/health", async () => ({ status: "ok" }));
+
+  app.get("/api/v1/me", async (request) => {
+    const { userId } = await requirePrincipal(request);
+    return { userId };
+  });
 
   return app;
 }

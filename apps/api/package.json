@@ -9,6 +9,14 @@
     "test:integration": "vitest run --config ../../vitest.workspace.ts --project integration"
   },
   "dependencies": {
-    "fastify": "^5.8.0"
+    "@tutorloop/contracts": "workspace:*",
+    "@tutorloop/db": "workspace:*",
+    "better-auth": "1.7.26",
+    "fastify": "^5.8.0",
+    "kysely": "^0.29.9"
+  },
+  "devDependencies": {
+    "@tutorloop/testkit": "workspace:*",
+    "auth": "1.7.26"
   }
 }

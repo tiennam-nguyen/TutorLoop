@@ -4,13 +4,18 @@ import { createDb } from "./client.ts";
 import type { Database } from "./database.ts";
 import * as core from "./migrations/001_core.ts";
 import * as proposalsJobsAudit from "./migrations/002_proposals_jobs_audit.ts";
+import * as betterAuth from "./migrations/003_better_auth.ts";
 
 export async function runMigrations(db: Kysely<Database>): Promise<void> {
   const migrator = new Migrator({
     db,
     provider: {
       async getMigrations() {
-        return { "001_core": core, "002_proposals_jobs_audit": proposalsJobsAudit };
+        return {
+          "001_core": core,
+          "002_proposals_jobs_audit": proposalsJobsAudit,
+          "003_better_auth": betterAuth,
+        };
       },
     },
   });
