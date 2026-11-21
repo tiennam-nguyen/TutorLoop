@@ -1,0 +1,34 @@
+import type { Kysely } from "kysely";
+import { Migrator } from "kysely/migration";
+import { createDb } from "./client.ts";
+import type { Database } from "./database.ts";
+import * as core from "./migrations/001_core.ts";
+
+export async function runMigrations(db: Kysely<Database>): Promise<void> {
+  const migrator = new Migrator({
+    db,
+    provider: {
+      async getMigrations() {
+        return { "001_core": core };
+      },
+    },
+  });
+  const { error } = await migrator.migrateToLatest();
+  if (error !== undefined) {
+    throw error;
+  }
+}
+
+if (import.meta.main) {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString?.trim()) {
+    throw new Error("DATABASE_URL is required to run migrations.");
+  }
+
+  const db = createDb(connectionString);
+  try {
+    await runMigrations(db);
+  } finally {
+    await db.destroy();
+  }
+}

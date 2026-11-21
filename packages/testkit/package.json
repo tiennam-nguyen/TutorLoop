@@ -1,5 +1,15 @@
 {
   "name": "@tutorloop/testkit",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "exports": {
+    "./builders": "./src/builders.ts",
+    "./postgres": "./src/postgres.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@testcontainers/postgresql": "^12.2.2"
+  }
 }
