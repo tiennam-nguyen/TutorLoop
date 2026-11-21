@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./contract": "./src/contract.ts"
+    "./contract": "./src/contract.ts",
+    "./pseudonymize": "./src/pseudonymize.ts"
   },
   "scripts": {
     "test": "vitest run --config ../../vitest.workspace.ts --project unit",
