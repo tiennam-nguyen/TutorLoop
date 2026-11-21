@@ -6,6 +6,7 @@
     "./client": "./src/client.ts",
     "./database": "./src/database.ts",
     "./migrate": "./src/migrate.ts",
+    "./repositories/ai-runs": "./src/repositories/ai-runs.ts",
     "./repositories/classes": "./src/repositories/classes.ts",
     "./repositories/evidence": "./src/repositories/evidence.ts",
     "./repositories/issues": "./src/repositories/issues.ts",

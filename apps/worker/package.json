@@ -6,6 +6,7 @@
     "./worker": "./src/worker.ts"
   },
   "scripts": {
+    "start": "node src/server.ts",
     "test": "vitest run --config ../../vitest.workspace.ts --project unit",
     "test:integration": "vitest run --config ../../vitest.workspace.ts --project integration",
     "typecheck": "tsc --noEmit"

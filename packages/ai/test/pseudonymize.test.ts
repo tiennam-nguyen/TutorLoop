@@ -80,6 +80,16 @@ describe("pseudonymizeNote", () => {
     expect(result.text).not.toContain("912-345-678");
   });
 
+  it("keeps arithmetic and ISO dates while masking formatted phone numbers", () => {
+    const result = pseudonymizeNote({
+      body: "An calculated 123 - 456 on 2026-11-20. Then 1,234 - 5,678. Contact (415) 555-2671 or +84 912-345-678.",
+      students: [{ displayLabel: "An", aiAlias: "STU_1" }],
+    });
+    expect(result.text).toBe(
+      "STU_1 calculated 123 - 456 on 2026-11-20. Then 1,234 - 5,678. Contact [PHONE] or [PHONE].",
+    );
+  });
+
   it("redacts a multi-segment email at sentence end without consuming punctuation", () => {
     const result = pseudonymizeNote({
       body: "Send it to jane.doe@school.example.co.uk.",
@@ -89,6 +99,12 @@ describe("pseudonymizeNote", () => {
     expect(result.text).toBe("Send it to [EMAIL].");
     expect(result.text).not.toContain("example.co.uk");
     expect(result.text).not.toContain("jane.doe");
+  });
+
+  it("redacts UUIDs inside an email as part of the email and elsewhere as IDs", () => {
+    const id = "e25ec666-221f-47ac-825e-b31eea04cffe";
+    const result = pseudonymizeNote({ body: `Student ref ${id}; contact parent+${id}@school.example.`, students: [] });
+    expect(result.text).toBe("Student ref [ID]; contact [EMAIL].");
   });
 
   it("assigns deterministic ambiguity tokens for the same student order", () => {

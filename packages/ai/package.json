@@ -4,7 +4,9 @@
   "type": "module",
   "exports": {
     "./contract": "./src/contract.ts",
-    "./pseudonymize": "./src/pseudonymize.ts"
+    "./pseudonymize": "./src/pseudonymize.ts",
+    "./registry": "./src/registry.ts",
+    "./router": "./src/router.ts"
   },
   "scripts": {
     "test": "vitest run --config ../../vitest.workspace.ts --project unit",

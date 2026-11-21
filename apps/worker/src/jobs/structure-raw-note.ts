@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
-import type { NoteStructurer, StructureNoteInput } from "@tutorloop/ai/contract";
-import { idSchema, proposalDraftV1Schema, type ProposalDraftItemV1 } from "@tutorloop/contracts";
+import { prepareDraftForPersistence, type NoteStructurer, type StructureNoteInput } from "@tutorloop/ai/contract";
+import { AIProcessingError, type NoteRouter } from "@tutorloop/ai/router";
+import { idSchema, proposalDraftV1Schema } from "@tutorloop/contracts";
 import type { Database } from "@tutorloop/db/database";
+import { insertAIRun } from "@tutorloop/db/repositories/ai-runs";
 import {
   lockCurrentStructureClaim, markJobSucceeded, type StructureJobClaim,
 } from "@tutorloop/db/repositories/jobs";
@@ -15,9 +17,8 @@ import type { Kysely, Transaction } from "kysely";
 
 export type StructureJobDeps = {
   db: Kysely<Database>;
-  structurer: NoteStructurer;
   now: () => Date;
-};
+} & ({ structurer: NoteStructurer; route?: never } | { route: NoteRouter; structurer?: never });
 
 export const JOB_LOCK_MS = 5 * 60_000;
 
@@ -75,54 +76,42 @@ async function loadContext(
   };
 }
 
-function canStoreJsonText(value: unknown): boolean {
-  if (typeof value === "string") return value.isWellFormed() && !value.includes("\u0000");
-  if (value && typeof value === "object") return Object.values(value).every(canStoreJsonText);
-  return true;
-}
-
-function invalidDraft(): never {
-  throw new StructureJobError("INVALID_PROPOSAL_DRAFT");
-}
-
-function prepareItems(items: ProposalDraftItemV1[], input: StructureNoteInput) {
-  const aliases = new Set(input.students.map(({ aiAlias }) => aiAlias));
-  const canonicalIds = new Set(input.canonicalIssues.map(({ canonicalIssueId }) => canonicalIssueId));
-  const studentIssueIds = new Set(input.studentIssues.map(({ studentIssueId }) => studentIssueId));
-  const entries = items.map((item) => ({ id: randomUUID(), item }));
-  const byKey = new Map(entries.map((entry) => [entry.item.key, entry]));
-
-  return entries.map(({ id, item }) => {
-    if ("studentRef" in item && item.studentRef.kind === "RESOLVED" &&
-      !aliases.has(item.studentRef.studentAlias)) invalidDraft();
-
-    let dependencyId: string | null = null;
-    if ("canonicalIssueRef" in item) {
-      const ref = item.canonicalIssueRef;
-      if (ref.kind === "PROPOSED") {
-        const dependency = byKey.get(ref.proposalKey);
-        if (dependency?.item.type !== "CREATE_CANONICAL_ISSUE") invalidDraft();
-        dependencyId = dependency.id;
-      } else if (ref.kind === "EXISTING" && !canonicalIds.has(ref.canonicalIssueId.toLowerCase())) {
-        invalidDraft();
-      }
+async function generateDraft(
+  job: StructureJobClaim, deps: StructureJobDeps, input: StructureNoteInput, run: { id: string; class_id: string },
+) {
+  if (!deps.route) {
+    try {
+      return await deps.structurer.structureNote(input);
+    } catch {
+      throw new StructureJobError("AI_PROCESSING_FAILED");
     }
-    const issueRef = "studentIssueRef" in item ? item.studentIssueRef : null;
-    if (issueRef?.kind === "PROPOSED") {
-      const dependency = byKey.get(issueRef.proposalKey);
-      if (dependency?.item.type !== "CREATE_STUDENT_ISSUE") invalidDraft();
-      dependencyId = dependency.id;
-    } else if (issueRef?.kind === "EXISTING" && !studentIssueIds.has(issueRef.studentIssueId.toLowerCase())) {
-      invalidDraft();
-    }
+  }
 
-    const baseVersion = "expectedVersion" in item ? item.expectedVersion : null;
-    if (baseVersion !== null && baseVersion > 2_147_483_647) invalidDraft();
-    return {
-      id, item, dependencyId, baseVersion,
-      targetId: baseVersion !== null && issueRef?.kind === "EXISTING" ? issueRef.studentIssueId : null,
-    };
-  });
+  const [classroom, archived] = await Promise.all([
+    deps.db.selectFrom("classes").select("name").where("id", "=", input.classId).executeTakeFirstOrThrow(),
+    deps.db.selectFrom("students").select("display_label").where("class_id", "=", input.classId)
+      .where("archived_at", "is not", null).execute(),
+  ]);
+  const privateLabels = [classroom.name, ...archived.map(({ display_label }) => display_label)];
+  try {
+    const { draft } = await deps.route(input, { privateLabels, onAttempt: async (attempt) => {
+      const recorded = await withCurrentStructureClaim(job, deps, async (trx, now) => {
+        await insertAIRun(trx, {
+          class_id: run.class_id, proposal_run_id: run.id, task_type: input.task,
+          provider: attempt.provider, model: attempt.model, prompt_version: attempt.promptVersion,
+          schema_version: attempt.schemaVersion, redaction_version: attempt.redactionVersion,
+          input_hash: attempt.inputHash, latency_ms: attempt.latencyMs, status: attempt.status,
+          error_code: attempt.errorCode, usage_json: null, created_at: now,
+        });
+        return true;
+      });
+      if (!recorded) throw new StructureJobError("AI_PROCESSING_FAILED");
+    } });
+    return draft;
+  } catch (error) {
+    if (error instanceof AIProcessingError) throw new StructureJobError("AI_PROCESSING_FAILED");
+    throw error;
+  }
 }
 
 export async function processStructureRawNoteJob(job: StructureJobClaim, deps: StructureJobDeps): Promise<void> {
@@ -148,24 +137,20 @@ export async function processStructureRawNoteJob(job: StructureJobClaim, deps: S
   if (preparation.kind === "processing") {
     const { note, run } = preparation;
     const input = await loadContext(deps.db, note);
-    let output: unknown;
-    try {
-      output = await deps.structurer.structureNote(input);
-    } catch {
-      throw new StructureJobError("AI_PROCESSING_FAILED");
-    }
+    const output = await generateDraft(job, deps, input, run);
     const draft = proposalDraftV1Schema.safeParse(output);
-    if (!draft.success || !canStoreJsonText(draft.data)) invalidDraft();
-    const items = prepareItems(draft.data.items, input);
+    const items = draft.success ? prepareDraftForPersistence(draft.data, input) : undefined;
+    if (!items) throw new StructureJobError("INVALID_PROPOSAL_DRAFT");
+    const ids = new Map(items.map(({ item }) => [item.key, randomUUID()]));
 
     const persisted = await withCurrentStructureClaim(job, deps, async (trx, now) => {
-      await insertProposalItems(trx, items.map(({ id, item, baseVersion, targetId }) => ({
-        id, class_id: run.class_id, proposal_run_id: run.id, item_type: item.type, original_payload: item,
+      await insertProposalItems(trx, items.map(({ item, baseVersion, targetId }) => ({
+        id: ids.get(item.key)!, class_id: run.class_id, proposal_run_id: run.id, item_type: item.type, original_payload: item,
         status: "PENDING", target_entity_type: targetId ? "STUDENT_ISSUE" : null, target_entity_id: targetId,
         base_version: baseVersion, created_at: now,
       })));
-      for (const { id, dependencyId } of items) {
-        if (dependencyId) await insertProposalItemDependency(trx, id, dependencyId);
+      for (const { item, dependencyKey } of items) {
+        if (dependencyKey !== null) await insertProposalItemDependency(trx, ids.get(item.key)!, ids.get(dependencyKey)!);
       }
       await markProcessingRunReady(trx, run.id, now);
       return true;
