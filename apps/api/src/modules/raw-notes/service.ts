@@ -19,13 +19,13 @@ import { requireOwnedClass } from "../../common/ownership.ts";
 type Db = Kysely<Database>;
 type RawNoteRow = NonNullable<Awaited<ReturnType<typeof findRawNote>>>;
 
-export function normalizeObservedAt(timestamp: string): string {
+export function normalizeObservedAt(timestamp: string, label = "Observed time"): string {
   const fraction = /\.(\d+)/.exec(timestamp)?.[1] ?? "";
   const wholeSecond = new Date(timestamp.replace(/\.\d+/, ""));
   // PostgreSQL can store six fractional digits, and the DTO uses a four-digit UTC year.
   if (/[1-9]/.test(fraction.slice(6)) || !Number.isFinite(wholeSecond.getTime()) ||
       wholeSecond.getUTCFullYear() < 0 || wholeSecond.getUTCFullYear() > 9999) {
-    throw new ApiError("VALIDATION_ERROR", "Observed time must be representable exactly in UTC.");
+    throw new ApiError("VALIDATION_ERROR", `${label} must be representable exactly in UTC.`);
   }
   return `${wholeSecond.toISOString().slice(0, 19)}.${fraction.slice(0, 6).padEnd(6, "0")}Z`;
 }

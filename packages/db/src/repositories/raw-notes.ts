@@ -1,4 +1,4 @@
-import { type Insertable, type Kysely, sql, type Transaction } from "kysely";
+import { type Expression, type Insertable, type Kysely, sql, type Transaction } from "kysely";
 import type { Database } from "../database.ts";
 
 type Db = Kysely<Database>;
@@ -8,11 +8,15 @@ type CaptureRow = Omit<Insertable<Database["raw_notes"]>, "observed_at" | "clien
 };
 
 // Format in PostgreSQL to preserve microseconds and calendar fields, including ISO year 0000 (1 BC).
-export const observedAtUtc = sql<string>`
-  CASE WHEN extract(year FROM observed_at AT TIME ZONE 'UTC') = -1 THEN '0000'
-    ELSE to_char(observed_at AT TIME ZONE 'UTC', 'YYYY') END ||
-  to_char(observed_at AT TIME ZONE 'UTC', '-MM-DD"T"HH24:MI:SS.US"Z"')
-`.as("observed_at_utc");
+export function formatUtcTimestamp(column: Expression<Date>) {
+  return sql<string>`
+    CASE WHEN extract(year FROM ${column} AT TIME ZONE 'UTC') = -1 THEN '0000'
+      ELSE to_char(${column} AT TIME ZONE 'UTC', 'YYYY') END ||
+    to_char(${column} AT TIME ZONE 'UTC', '-MM-DD"T"HH24:MI:SS.US"Z"')
+  `;
+}
+
+export const observedAtUtc = formatUtcTimestamp(sql.ref("observed_at")).as("observed_at_utc");
 
 export function exactTimestamptz(observedAt: string) {
   // ISO year 0000 is 1 BC in PostgreSQL.

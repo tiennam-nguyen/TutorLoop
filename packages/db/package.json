@@ -9,6 +9,7 @@
     "./repositories/ai-runs": "./src/repositories/ai-runs.ts",
     "./repositories/classes": "./src/repositories/classes.ts",
     "./repositories/evidence": "./src/repositories/evidence.ts",
+    "./repositories/interventions": "./src/repositories/interventions.ts",
     "./repositories/issues": "./src/repositories/issues.ts",
     "./repositories/jobs": "./src/repositories/jobs.ts",
     "./repositories/projections": "./src/repositories/projections.ts",

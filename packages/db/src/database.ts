@@ -107,6 +107,7 @@ export interface Database {
     occurred_at: Date;
     created_by_user_id: string;
     created_at: Date;
+    client_request_id: ColumnType<string | null, string | null | undefined, never>;
   };
   intervention_targets: {
     class_id: string;

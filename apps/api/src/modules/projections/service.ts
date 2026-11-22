@@ -5,8 +5,9 @@ import {
 import type { Database } from "@tutorloop/db/database";
 import type { StudentIssueRow } from "@tutorloop/db/repositories/issues";
 import {
-  findCanonicalIssueSummary, listActiveClassIssueEvidence, listActiveClassStudentIssues, listCanonicalIssueSummaries,
-  listStudentEvidence, listStudentIssuesWithCanonicalIssue, listStudentIssueTransitions,
+  findCanonicalIssueSummary, listActiveClassIssueEvidence, listActiveClassStudentIssues, listCanonicalIssueInterventions,
+  listCanonicalIssueSummaries, listStudentEvidence, listStudentInterventions, listStudentIssuesWithCanonicalIssue,
+  listStudentIssueTransitions,
 } from "@tutorloop/db/repositories/projections";
 import { findStudent } from "@tutorloop/db/repositories/students";
 import type { Kysely, Selectable } from "kysely";
@@ -14,6 +15,7 @@ import type { AuthPrincipal } from "../../auth/principal.ts";
 import { ApiError } from "../../common/errors.ts";
 import { requireOwnedClass } from "../../common/ownership.ts";
 import { getClassDetail, toStudentDto } from "../classes/service.ts";
+import { toInterventionDto } from "../interventions/service.ts";
 
 type Db = Kysely<Database>;
 type CanonicalIssueRow = Selectable<Database["canonical_issues"]>;
@@ -89,6 +91,7 @@ export function getStudentOverview(db: Db, principal: AuthPrincipal, classId: st
     const issues = await listStudentIssuesWithCanonicalIssue(trx, classroom.id, student.id);
     const evidence = await listStudentEvidence(trx, classroom.id, student.id);
     const transitions = await listStudentIssueTransitions(trx, classroom.id, student.id);
+    const interventions = await listStudentInterventions(trx, classroom.id, student.id);
     const studentIssues = issues.map((row) => ({
       ...toStudentIssueDto(row),
       canonicalIssue: toCanonicalIssueDto({
@@ -102,7 +105,7 @@ export function getStudentOverview(db: Db, principal: AuthPrincipal, classId: st
       activeStudentIssues: studentIssues.filter((issue) => issue.state !== "RESOLVED_FOR_NOW"),
       resolvedStudentIssues: studentIssues.filter((issue) => issue.state === "RESOLVED_FOR_NOW"),
       evidence: evidence.map(toEvidenceDto), transitions: transitions.map(toTransitionDto),
-      interventions: [], reassessments: [],
+      interventions: interventions.map(toInterventionDto), reassessments: [],
     };
   });
 }
@@ -125,6 +128,7 @@ export function getClassIssueDetail(
 
     const issues = await listActiveClassStudentIssues(trx, classroom.id, canonical.id);
     const evidence = await listActiveClassIssueEvidence(trx, classroom.id, canonical.id);
+    const interventions = await listCanonicalIssueInterventions(trx, classroom.id, canonical.id);
     const evidenceByIssue = new Map<string, string[]>();
     for (const event of evidence) {
       const ids = evidenceByIssue.get(event.student_issue_id) ?? [];
@@ -142,7 +146,7 @@ export function getClassIssueDetail(
         }),
         evidenceIds: evidenceByIssue.get(row.id) ?? [],
       })),
-      interventions: [], reassessments: [],
+      interventions: interventions.map(toInterventionDto), reassessments: [],
     };
   });
 }

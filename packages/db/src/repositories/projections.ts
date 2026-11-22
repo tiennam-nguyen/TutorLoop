@@ -1,5 +1,6 @@
 import { type Kysely, sql } from "kysely";
 import type { Database } from "../database.ts";
+import { interventionsWithTargets } from "./interventions.ts";
 import { observedAtUtc } from "./raw-notes.ts";
 
 type Db = Kysely<Database>;
@@ -88,4 +89,24 @@ export function listStudentIssueTransitions(db: Db, classId: string, studentId: 
     .selectAll("transition").select(sql<string>`to_char(transition.created_at, 'US')`.as("created_at_micros"))
     .where("transition.class_id", "=", classId).where("issue.student_id", "=", studentId)
     .orderBy("transition.created_at").orderBy("transition.insertion_order").orderBy("transition.id").execute();
+}
+
+function listInterventionHistory(db: Db, classId: string, match: "student_id" | "canonical_issue_id", id: string) {
+  return interventionsWithTargets(db, classId).where((eb) => eb.exists(
+    eb.selectFrom("intervention_targets as target")
+      .innerJoin("student_issues as issue", (join) => join
+        .onRef("target.student_issue_id", "=", "issue.id").onRef("target.class_id", "=", "issue.class_id"))
+      .select("target.intervention_id")
+      .whereRef("target.intervention_id", "=", "interventions.id")
+      .whereRef("target.class_id", "=", "interventions.class_id")
+      .where(`issue.${match}`, "=", id),
+  )).orderBy("interventions.occurred_at").orderBy("interventions.created_at").orderBy("interventions.id").execute();
+}
+
+export function listStudentInterventions(db: Db, classId: string, studentId: string) {
+  return listInterventionHistory(db, classId, "student_id", studentId);
+}
+
+export function listCanonicalIssueInterventions(db: Db, classId: string, canonicalIssueId: string) {
+  return listInterventionHistory(db, classId, "canonical_issue_id", canonicalIssueId);
 }
