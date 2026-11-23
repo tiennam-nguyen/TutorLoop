@@ -124,6 +124,7 @@ export interface Database {
     performed_at: Date | null;
     completed_at: Date | null;
     created_by_user_id: string;
+    client_request_id: ColumnType<string | null, string | null | undefined, never>;
     version: Generated<number>;
     created_at: Date;
     updated_at: Date;

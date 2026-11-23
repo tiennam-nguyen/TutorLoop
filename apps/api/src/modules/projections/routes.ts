@@ -6,13 +6,13 @@ import { getClassIssueDetail, getClassIssueList, getClassOverview, getStudentOve
 
 type ClassParams = { classId: string };
 
-export function registerProjectionRoutes(app: FastifyInstance, db: Kysely<Database>): void {
+export function registerProjectionRoutes(app: FastifyInstance, db: Kysely<Database>, now: () => Date): void {
   const classroom = "/api/v1/classes/:classId";
   const options = { exposeHeadRoute: false };
 
   app.get<{ Params: ClassParams }>(`${classroom}/overview`, options, async (request) => {
     const principal = await requirePrincipal(request);
-    return getClassOverview(db, principal, request.params.classId);
+    return getClassOverview(db, principal, request.params.classId, now());
   });
 
   app.get<{ Params: ClassParams & { studentId: string } }>(`${classroom}/students/:studentId/overview`, options, async (request) => {
@@ -23,12 +23,12 @@ export function registerProjectionRoutes(app: FastifyInstance, db: Kysely<Databa
 
   app.get<{ Params: ClassParams }>(`${classroom}/issues`, options, async (request) => {
     const principal = await requirePrincipal(request);
-    return getClassIssueList(db, principal, request.params.classId);
+    return getClassIssueList(db, principal, request.params.classId, now());
   });
 
   app.get<{ Params: ClassParams & { canonicalIssueId: string } }>(`${classroom}/issues/:canonicalIssueId`, options, async (request) => {
     const principal = await requirePrincipal(request);
     const { classId, canonicalIssueId } = request.params;
-    return getClassIssueDetail(db, principal, classId, canonicalIssueId);
+    return getClassIssueDetail(db, principal, classId, canonicalIssueId, now());
   });
 }

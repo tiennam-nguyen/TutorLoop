@@ -9,6 +9,7 @@ import * as classStudentCreateReceipts from "./migrations/004_class_student_crea
 import * as proposalDecisionReceipts from "./migrations/005_proposal_decision_receipts.ts";
 import * as studentIssueTransitionOrder from "./migrations/006_student_issue_transition_order.ts";
 import * as interventionCreateRequest from "./migrations/007_intervention_create_request.ts";
+import * as reassessmentCreateRequest from "./migrations/008_reassessment_create_request.ts";
 
 export async function runMigrations(db: Kysely<Database>): Promise<void> {
   const migrator = new Migrator({
@@ -23,6 +24,7 @@ export async function runMigrations(db: Kysely<Database>): Promise<void> {
           "005_proposal_decision_receipts": proposalDecisionReceipts,
           "006_student_issue_transition_order": studentIssueTransitionOrder,
           "007_intervention_create_request": interventionCreateRequest,
+          "008_reassessment_create_request": reassessmentCreateRequest,
         };
       },
     },

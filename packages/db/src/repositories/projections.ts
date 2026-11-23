@@ -2,6 +2,7 @@ import { type Kysely, sql } from "kysely";
 import type { Database } from "../database.ts";
 import { interventionsWithTargets } from "./interventions.ts";
 import { observedAtUtc } from "./raw-notes.ts";
+import { reassessmentsWithTargets } from "./reassessments.ts";
 
 type Db = Kysely<Database>;
 
@@ -13,31 +14,39 @@ function activeStudentIssues(db: Db, classId: string) {
     .where("student.archived_at", "is", null);
 }
 
-function canonicalIssueSummaries(db: Db, classId: string, canonicalIssueId?: string) {
+function canonicalIssueSummaries(db: Db, classId: string, now: Date, canonicalIssueId?: string) {
   const active = activeStudentIssues(db, classId);
   const scoped = canonicalIssueId === undefined ? active : active.where("issue.canonical_issue_id", "=", canonicalIssueId);
   const counts = scoped
-    .select(({ fn }) => [
+    .select(({ fn, exists, selectFrom }) => [
       "issue.canonical_issue_id",
       fn.count("issue.id").filterWhere("issue.state", "=", "OPEN").as("open_count"),
       fn.count("issue.id").filterWhere("issue.state", "=", "IMPROVING").as("improving_count"),
       fn.count("issue.id").filterWhere("issue.state", "=", "RESOLVED_FOR_NOW").as("resolved_count"),
       fn.count("issue.student_id").distinct().as("affected_students"),
+      fn.count("issue.id").filterWhere(exists(
+        selectFrom("reassessment_targets as target")
+          .innerJoin("reassessments as reassessment", (join) => join
+            .onRef("reassessment.id", "=", "target.reassessment_id").onRef("reassessment.class_id", "=", "target.class_id"))
+          .select("target.reassessment_id").whereRef("target.class_id", "=", "issue.class_id")
+          .whereRef("target.student_issue_id", "=", "issue.id")
+          .where("reassessment.status", "=", "SCHEDULED").where("reassessment.due_at", "<=", now),
+      )).as("due_count"),
     ]).groupBy("issue.canonical_issue_id").as("counts");
 
   return db.selectFrom("canonical_issues as canonical")
     .leftJoin(counts, "counts.canonical_issue_id", "canonical.id")
     .selectAll("canonical")
-    .select(["counts.open_count", "counts.improving_count", "counts.resolved_count", "counts.affected_students"])
+    .select(["counts.open_count", "counts.improving_count", "counts.resolved_count", "counts.affected_students", "counts.due_count"])
     .where("canonical.class_id", "=", classId);
 }
 
-export function listCanonicalIssueSummaries(db: Db, classId: string) {
-  return canonicalIssueSummaries(db, classId).orderBy("canonical.created_at").orderBy("canonical.id").execute();
+export function listCanonicalIssueSummaries(db: Db, classId: string, now: Date) {
+  return canonicalIssueSummaries(db, classId, now).orderBy("canonical.created_at").orderBy("canonical.id").execute();
 }
 
-export function findCanonicalIssueSummary(db: Db, classId: string, canonicalIssueId: string) {
-  return canonicalIssueSummaries(db, classId, canonicalIssueId).where("canonical.id", "=", canonicalIssueId).executeTakeFirst();
+export function findCanonicalIssueSummary(db: Db, classId: string, canonicalIssueId: string, now: Date) {
+  return canonicalIssueSummaries(db, classId, now, canonicalIssueId).where("canonical.id", "=", canonicalIssueId).executeTakeFirst();
 }
 
 export function listActiveClassStudentIssues(db: Db, classId: string, canonicalIssueId: string) {
@@ -109,4 +118,24 @@ export function listStudentInterventions(db: Db, classId: string, studentId: str
 
 export function listCanonicalIssueInterventions(db: Db, classId: string, canonicalIssueId: string) {
   return listInterventionHistory(db, classId, "canonical_issue_id", canonicalIssueId);
+}
+
+function listReassessmentHistory(db: Db, classId: string, match: "student_id" | "canonical_issue_id", id: string) {
+  return reassessmentsWithTargets(db, classId).where((eb) => eb.exists(
+    eb.selectFrom("reassessment_targets as target")
+      .innerJoin("student_issues as issue", (join) => join
+        .onRef("target.student_issue_id", "=", "issue.id").onRef("target.class_id", "=", "issue.class_id"))
+      .select("target.reassessment_id")
+      .whereRef("target.reassessment_id", "=", "reassessments.id")
+      .whereRef("target.class_id", "=", "reassessments.class_id")
+      .where(`issue.${match}`, "=", id),
+  )).orderBy(sql<Date>`coalesce(reassessments.performed_at, reassessments.due_at)`).orderBy("reassessments.id").execute();
+}
+
+export function listStudentReassessments(db: Db, classId: string, studentId: string) {
+  return listReassessmentHistory(db, classId, "student_id", studentId);
+}
+
+export function listCanonicalIssueReassessments(db: Db, classId: string, canonicalIssueId: string) {
+  return listReassessmentHistory(db, classId, "canonical_issue_id", canonicalIssueId);
 }

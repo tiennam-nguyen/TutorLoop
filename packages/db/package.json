@@ -15,6 +15,7 @@
     "./repositories/projections": "./src/repositories/projections.ts",
     "./repositories/proposals": "./src/repositories/proposals.ts",
     "./repositories/raw-notes": "./src/repositories/raw-notes.ts",
+    "./repositories/reassessments": "./src/repositories/reassessments.ts",
     "./repositories/students": "./src/repositories/students.ts"
   },
   "scripts": {

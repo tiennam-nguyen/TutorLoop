@@ -6,8 +6,8 @@ import type { Database } from "@tutorloop/db/database";
 import type { StudentIssueRow } from "@tutorloop/db/repositories/issues";
 import {
   findCanonicalIssueSummary, listActiveClassIssueEvidence, listActiveClassStudentIssues, listCanonicalIssueInterventions,
-  listCanonicalIssueSummaries, listStudentEvidence, listStudentInterventions, listStudentIssuesWithCanonicalIssue,
-  listStudentIssueTransitions,
+  listCanonicalIssueReassessments, listCanonicalIssueSummaries, listStudentEvidence, listStudentInterventions,
+  listStudentIssuesWithCanonicalIssue, listStudentIssueTransitions, listStudentReassessments,
 } from "@tutorloop/db/repositories/projections";
 import { findStudent } from "@tutorloop/db/repositories/students";
 import type { Kysely, Selectable } from "kysely";
@@ -16,6 +16,7 @@ import { ApiError } from "../../common/errors.ts";
 import { requireOwnedClass } from "../../common/ownership.ts";
 import { getClassDetail, toStudentDto } from "../classes/service.ts";
 import { toInterventionDto } from "../interventions/service.ts";
+import { toReassessmentDto } from "../reassessments/service.ts";
 
 type Db = Kysely<Database>;
 type CanonicalIssueRow = Selectable<Database["canonical_issues"]>;
@@ -40,7 +41,7 @@ function toSummaryDto(row: SummaryRow): CanonicalIssueSummaryDto {
       RESOLVED_FOR_NOW: Number(row.resolved_count ?? 0),
     },
     affectedStudents: Number(row.affected_students ?? 0),
-    dueCount: 0,
+    dueCount: Number(row.due_count ?? 0),
   };
 }
 
@@ -75,10 +76,10 @@ function toTransitionDto(row: TransitionRow): StudentIssueTransitionDto {
   };
 }
 
-export function getClassOverview(db: Db, principal: AuthPrincipal, classId: string): Promise<ClassOverviewDto> {
+export function getClassOverview(db: Db, principal: AuthPrincipal, classId: string, now: Date): Promise<ClassOverviewDto> {
   return db.transaction().setIsolationLevel("repeatable read").execute(async (trx) => {
     const classroom = await getClassDetail(trx, principal, classId);
-    const issues = await listCanonicalIssueSummaries(trx, classroom.id);
+    const issues = await listCanonicalIssueSummaries(trx, classroom.id, now);
     return { ...classroom, issues: issues.map(toSummaryDto) };
   });
 }
@@ -92,6 +93,7 @@ export function getStudentOverview(db: Db, principal: AuthPrincipal, classId: st
     const evidence = await listStudentEvidence(trx, classroom.id, student.id);
     const transitions = await listStudentIssueTransitions(trx, classroom.id, student.id);
     const interventions = await listStudentInterventions(trx, classroom.id, student.id);
+    const reassessments = await listStudentReassessments(trx, classroom.id, student.id);
     const studentIssues = issues.map((row) => ({
       ...toStudentIssueDto(row),
       canonicalIssue: toCanonicalIssueDto({
@@ -105,30 +107,31 @@ export function getStudentOverview(db: Db, principal: AuthPrincipal, classId: st
       activeStudentIssues: studentIssues.filter((issue) => issue.state !== "RESOLVED_FOR_NOW"),
       resolvedStudentIssues: studentIssues.filter((issue) => issue.state === "RESOLVED_FOR_NOW"),
       evidence: evidence.map(toEvidenceDto), transitions: transitions.map(toTransitionDto),
-      interventions: interventions.map(toInterventionDto), reassessments: [],
+      interventions: interventions.map(toInterventionDto), reassessments: reassessments.map(toReassessmentDto),
     };
   });
 }
 
-export function getClassIssueList(db: Db, principal: AuthPrincipal, classId: string): Promise<CanonicalIssueSummaryDto[]> {
+export function getClassIssueList(db: Db, principal: AuthPrincipal, classId: string, now: Date): Promise<CanonicalIssueSummaryDto[]> {
   return db.transaction().setIsolationLevel("repeatable read").execute(async (trx) => {
     const classroom = await requireOwnedClass(trx, principal, classId);
-    return (await listCanonicalIssueSummaries(trx, classroom.id)).map(toSummaryDto);
+    return (await listCanonicalIssueSummaries(trx, classroom.id, now)).map(toSummaryDto);
   });
 }
 
 export function getClassIssueDetail(
-  db: Db, principal: AuthPrincipal, classId: string, canonicalIssueId: string,
+  db: Db, principal: AuthPrincipal, classId: string, canonicalIssueId: string, now: Date,
 ): Promise<CanonicalIssueDetailDto> {
   return db.transaction().setIsolationLevel("repeatable read").execute(async (trx) => {
     const classroom = await requireOwnedClass(trx, principal, classId);
     const canonical = idSchema.safeParse(canonicalIssueId).success
-      ? await findCanonicalIssueSummary(trx, classroom.id, canonicalIssueId) : undefined;
+      ? await findCanonicalIssueSummary(trx, classroom.id, canonicalIssueId, now) : undefined;
     if (!canonical) throw new ApiError("NOT_FOUND", "Canonical Issue not found.");
 
     const issues = await listActiveClassStudentIssues(trx, classroom.id, canonical.id);
     const evidence = await listActiveClassIssueEvidence(trx, classroom.id, canonical.id);
     const interventions = await listCanonicalIssueInterventions(trx, classroom.id, canonical.id);
+    const reassessments = await listCanonicalIssueReassessments(trx, classroom.id, canonical.id);
     const evidenceByIssue = new Map<string, string[]>();
     for (const event of evidence) {
       const ids = evidenceByIssue.get(event.student_issue_id) ?? [];
@@ -146,7 +149,7 @@ export function getClassIssueDetail(
         }),
         evidenceIds: evidenceByIssue.get(row.id) ?? [],
       })),
-      interventions: interventions.map(toInterventionDto), reassessments: [],
+      interventions: interventions.map(toInterventionDto), reassessments: reassessments.map(toReassessmentDto),
     };
   });
 }

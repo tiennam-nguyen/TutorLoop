@@ -8,14 +8,16 @@ import { registerInterventionRoutes } from "./modules/interventions/routes.ts";
 import { registerProjectionRoutes } from "./modules/projections/routes.ts";
 import { registerProposalRoutes } from "./modules/proposals/routes.ts";
 import { registerRawNoteRoutes } from "./modules/raw-notes/routes.ts";
+import { registerReassessmentRoutes } from "./modules/reassessments/routes.ts";
 
 export type CreateAppOptions = {
   authVerifier: AuthVerifier;
   db?: Kysely<Database>;
+  now?: () => Date;
 };
 
 export async function createApp(
-  { authVerifier, db }: CreateAppOptions,
+  { authVerifier, db, now = () => new Date() }: CreateAppOptions,
 ): Promise<FastifyInstance> {
   const app = fastify();
   app.decorate("authVerifier", authVerifier);
@@ -32,8 +34,9 @@ export async function createApp(
     registerClassRoutes(app, db);
     registerRawNoteRoutes(app, db);
     registerProposalRoutes(app, db);
-    registerProjectionRoutes(app, db);
+    registerProjectionRoutes(app, db, now);
     registerInterventionRoutes(app, db);
+    registerReassessmentRoutes(app, db, now);
   }
 
   return app;
