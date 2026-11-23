@@ -4,6 +4,7 @@ import { AIProcessingError, type NoteRouter } from "@tutorloop/ai/router";
 import { idSchema, proposalDraftV1Schema } from "@tutorloop/contracts";
 import type { Database } from "@tutorloop/db/database";
 import { insertAIRun } from "@tutorloop/db/repositories/ai-runs";
+import { listRecentIssueEvidence } from "@tutorloop/db/repositories/evidence";
 import {
   lockCurrentStructureClaim, markJobSucceeded, type StructureJobClaim,
 } from "@tutorloop/db/repositories/jobs";
@@ -13,7 +14,7 @@ import {
 } from "@tutorloop/db/repositories/proposals";
 import { findRawNote } from "@tutorloop/db/repositories/raw-notes";
 import { listActiveStudents } from "@tutorloop/db/repositories/students";
-import type { Kysely, Transaction } from "kysely";
+import { type Kysely, sql, type Transaction } from "kysely";
 
 export type StructureJobDeps = {
   db: Kysely<Database>;
@@ -45,20 +46,36 @@ async function loadContext(
   db: Kysely<Database>, note: NonNullable<Awaited<ReturnType<typeof findRawNote>>>,
 ): Promise<StructureNoteInput> {
   const classId = note.class_id;
-  const [students, canonicalIssues, studentIssues] = await Promise.all([
+  const outcome = note.note_type === "REASSESSMENT_OUTCOME";
+  const reassessmentId = outcome ? note.reassessment_id : null;
+  if (outcome && reassessmentId === null) throw new StructureJobError("INVALID_JOB_PAYLOAD");
+
+  const classIssues = db.selectFrom("student_issues")
+    .innerJoin("students", (join) => join.onRef("students.id", "=", "student_issues.student_id")
+      .onRef("students.class_id", "=", "student_issues.class_id"))
+    .select(["student_issues.id", "student_issues.student_id", "student_issues.canonical_issue_id",
+      "student_issues.manifestation", "student_issues.state", "student_issues.version"])
+    .where("student_issues.class_id", "=", classId).where("students.archived_at", "is", null)
+    .orderBy("student_issues.id");
+  const candidateQuery = reassessmentId === null ? classIssues : classIssues.where((eb) => eb.exists(
+    eb.selectFrom("reassessment_targets").select("student_issue_id")
+      .where("class_id", "=", classId).where("reassessment_id", "=", reassessmentId)
+      .whereRef("student_issue_id", "=", "student_issues.id"),
+  ));
+  const [students, studentIssues] = await Promise.all([
     listActiveStudents(db, classId),
+    candidateQuery.execute(),
+  ]);
+  const canonicalIds = [...new Set(studentIssues.map(({ canonical_issue_id }) => canonical_issue_id))];
+  const [canonicalIssues, history] = await Promise.all([
     db.selectFrom("canonical_issues").select(["id", "label", "description"])
-      .where("class_id", "=", classId).orderBy("id").execute(),
-    db.selectFrom("student_issues")
-      .innerJoin("students", (join) => join.onRef("students.id", "=", "student_issues.student_id")
-        .onRef("students.class_id", "=", "student_issues.class_id"))
-      .select(["student_issues.id", "student_issues.student_id", "student_issues.canonical_issue_id",
-        "student_issues.manifestation", "student_issues.state", "student_issues.version"])
-      .where("student_issues.class_id", "=", classId).where("students.archived_at", "is", null)
-      .orderBy("student_issues.id").execute(),
+      .where("class_id", "=", classId)
+      .$if(outcome, (query) => query.where("id", "=", sql<string>`any(${canonicalIds}::uuid[])`))
+      .orderBy("id").execute(),
+    outcome ? listRecentIssueEvidence(db, classId, studentIssues.map(({ id }) => id)) : undefined,
   ]);
   return {
-    task: note.note_type === "OBSERVATION" ? "STRUCTURE_OBSERVATION_NOTE" : "RECONCILE_REASSESSMENT_OUTCOME",
+    task: outcome ? "RECONCILE_REASSESSMENT_OUTCOME" : "STRUCTURE_OBSERVATION_NOTE",
     classId,
     rawNoteId: note.id,
     body: note.body,
@@ -73,11 +90,24 @@ async function loadContext(
       studentIssueId: issue.id, studentId: issue.student_id, canonicalIssueId: issue.canonical_issue_id,
       manifestation: issue.manifestation, state: issue.state, version: issue.version,
     })),
+    ...(history?.length ? { evidenceHistory: history.map((event) => ({
+      studentIssueId: event.student_issue_id, observationText: event.observation_text, learningContext: event.learning_context,
+    })) } : {}),
   };
+}
+
+async function loadPrivateLabels(db: Kysely<Database>, classId: string) {
+  const [classroom, archived] = await Promise.all([
+    db.selectFrom("classes").select("name").where("id", "=", classId).executeTakeFirstOrThrow(),
+    db.selectFrom("students").select("display_label").where("class_id", "=", classId)
+      .where("archived_at", "is not", null).execute(),
+  ]);
+  return [classroom.name, ...archived.map(({ display_label }) => display_label)];
 }
 
 async function generateDraft(
   job: StructureJobClaim, deps: StructureJobDeps, input: StructureNoteInput, run: { id: string; class_id: string },
+  privateLabels: string[] | undefined,
 ) {
   if (!deps.route) {
     try {
@@ -87,12 +117,6 @@ async function generateDraft(
     }
   }
 
-  const [classroom, archived] = await Promise.all([
-    deps.db.selectFrom("classes").select("name").where("id", "=", input.classId).executeTakeFirstOrThrow(),
-    deps.db.selectFrom("students").select("display_label").where("class_id", "=", input.classId)
-      .where("archived_at", "is not", null).execute(),
-  ]);
-  const privateLabels = [classroom.name, ...archived.map(({ display_label }) => display_label)];
   try {
     const { draft } = await deps.route(input, { privateLabels, onAttempt: async (attempt) => {
       const recorded = await withCurrentStructureClaim(job, deps, async (trx, now) => {
@@ -136,8 +160,13 @@ export async function processStructureRawNoteJob(job: StructureJobClaim, deps: S
 
   if (preparation.kind === "processing") {
     const { note, run } = preparation;
-    const input = await loadContext(deps.db, note);
-    const output = await generateDraft(job, deps, input, run);
+    // Read the roster, private labels and history cutoff from one snapshot before calling the provider.
+    const [input, privateLabels] = await deps.db.transaction().setIsolationLevel("repeatable read").setAccessMode("read only")
+      .execute((trx) => Promise.all([
+        loadContext(trx, note),
+        deps.route ? loadPrivateLabels(trx, note.class_id) : undefined,
+      ]));
+    const output = await generateDraft(job, deps, input, run, privateLabels);
     const draft = proposalDraftV1Schema.safeParse(output);
     const items = draft.success ? prepareDraftForPersistence(draft.data, input) : undefined;
     if (!items) throw new StructureJobError("INVALID_PROPOSAL_DRAFT");

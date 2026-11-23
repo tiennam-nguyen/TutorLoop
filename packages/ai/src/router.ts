@@ -94,6 +94,14 @@ function minimizeNote(input: StructureNoteInput, privateLabels?: readonly string
     state: issue.state,
     version: issue.version,
   }));
+  const evidenceHistory = input.task === "RECONCILE_REASSESSMENT_OUTCOME" ? input.evidenceHistory?.flatMap((event) => {
+    const studentIssueId = studentIssueAliases.get(event.studentIssueId);
+    if (!studentIssueId) return [];
+    return [{
+      studentIssueId, observationText: minimize(event.observationText),
+      learningContext: event.learningContext === null ? null : minimize(event.learningContext),
+    }];
+  }) : undefined;
   return {
     userPayload: {
       task: input.task,
@@ -102,6 +110,7 @@ function minimizeNote(input: StructureNoteInput, privateLabels?: readonly string
       ambiguousTokens: Array.from(ambiguousTokens, ([token, candidateAliases]) => ({ token, candidateAliases })),
       canonicalIssues,
       studentIssues,
+      ...(evidenceHistory?.length ? { evidenceHistory } : {}),
     },
     canonicalIds: new Map(Array.from(canonicalAliases, ([id, alias]) => [alias, id])),
     studentIssueIds: new Map(Array.from(studentIssueAliases, ([id, alias]) => [alias, id])),

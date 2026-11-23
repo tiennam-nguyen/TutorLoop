@@ -113,6 +113,13 @@ export function skipPendingReassessmentTarget(db: Trx, classId: string, id: stri
     .where("target_status", "=", "PENDING").returning("student_issue_id").executeTakeFirstOrThrow();
 }
 
+export function markPendingReassessmentTargetsEvidenced(db: Trx, classId: string, id: string, issueIds: string[]) {
+  return db.updateTable("reassessment_targets").set({ target_status: "EVIDENCED" })
+    .where("class_id", "=", classId).where("reassessment_id", "=", id)
+    .where("student_issue_id", "=", sql<string>`any(${issueIds}::uuid[])`)
+    .where("target_status", "=", "PENDING").returning("student_issue_id").execute();
+}
+
 export function listReassessmentTargetStatuses(db: Trx, classId: string, id: string) {
   return db.selectFrom("reassessment_targets").where("class_id", "=", classId).where("reassessment_id", "=", id)
     .select(["student_issue_id", "target_status"]).execute();

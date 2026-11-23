@@ -1,11 +1,13 @@
 import {
-  createReassessmentInputSchema, idSchema, nonblankTextWithoutNulSchema, skipReassessmentTargetInputSchema, versionedInputSchema,
+  createRawNoteInputSchema, createReassessmentInputSchema, idSchema, nonblankTextWithoutNulSchema,
+  skipReassessmentTargetInputSchema, versionedInputSchema,
 } from "@tutorloop/contracts";
 import type { Database } from "@tutorloop/db/database";
 import type { FastifyInstance } from "fastify";
 import type { Kysely } from "kysely";
 import { requirePrincipal } from "../../auth/principal.ts";
 import { ApiError } from "../../common/errors.ts";
+import { captureRawNote } from "../raw-notes/service.ts";
 import { changeReassessment, getReassessment, getReassessmentDueQueue, scheduleReassessment } from "./service.ts";
 
 type ClassParams = { classId: string };
@@ -20,6 +22,7 @@ const createInput = createReassessmentInputSchema.extend({
 const skipInput = skipReassessmentTargetInputSchema.extend({
   skipReason: nonblankTextWithoutNulSchema.refine((value) => value.isWellFormed()),
 });
+const outcomeInput = createRawNoteInputSchema.omit({ noteType: true, reassessmentId: true });
 
 export function registerReassessmentRoutes(app: FastifyInstance, db: Kysely<Database>, now: () => Date): void {
   const reassessments = "/api/v1/classes/:classId/reassessments";
@@ -42,6 +45,16 @@ export function registerReassessmentRoutes(app: FastifyInstance, db: Kysely<Data
     const principal = await requirePrincipal(request);
     const { classId, reassessmentId } = request.params;
     return getReassessment(db, principal, classId, reassessmentId);
+  });
+
+  app.post<{ Params: ReassessmentParams }>(`${detail}/outcome-note`, async (request, reply) => {
+    const principal = await requirePrincipal(request);
+    const { classId, reassessmentId } = request.params;
+    const input = outcomeInput.safeParse(request.body);
+    if (!input.success) throw new ApiError("VALIDATION_ERROR", "Invalid request.");
+    return reply.code(201).send(await captureRawNote(db, principal, classId, {
+      ...input.data, noteType: "REASSESSMENT_OUTCOME", reassessmentId,
+    }));
   });
 
   for (const type of ["mark-performed", "cancel"] as const) {

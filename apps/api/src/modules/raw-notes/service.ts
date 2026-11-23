@@ -66,6 +66,9 @@ async function toDetailDto(db: Db, row: RawNoteRow): Promise<RawNoteDetailDto> {
 export async function captureRawNote(
   db: Db, principal: AuthPrincipal, classId: string, input: CreateRawNoteInput,
 ): Promise<CreateRawNoteResponse> {
+  if (!input.body.isWellFormed() || input.body.includes("\u0000")) {
+    throw new ApiError("VALIDATION_ERROR", "Invalid request.");
+  }
   const observedAt = normalizeObservedAt(input.observedAt);
   const reassessmentId = input.reassessmentId?.toLowerCase() ?? null;
   if ((input.noteType === "REASSESSMENT_OUTCOME") !== (reassessmentId !== null)) {
@@ -74,7 +77,8 @@ export async function captureRawNote(
 
   return db.transaction().setIsolationLevel("read committed").execute(async (trx) => {
     const classroom = await requireOwnedClass(trx, principal, classId);
-    if (reassessmentId !== null && !(await findCaptureReassessment(trx, classroom.id, reassessmentId))) {
+    if (reassessmentId !== null &&
+      (!idSchema.safeParse(reassessmentId).success || !(await findCaptureReassessment(trx, classroom.id, reassessmentId)))) {
       throw new ApiError("NOT_FOUND", "Reassessment not found.");
     }
 

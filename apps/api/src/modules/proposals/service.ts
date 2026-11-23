@@ -15,8 +15,11 @@ import {
   updateProposalReviewStatus,
 } from "@tutorloop/db/repositories/proposals";
 import { findRawNote } from "@tutorloop/db/repositories/raw-notes";
+import {
+  listReassessmentTargetStatuses, lockReassessment, markPendingReassessmentTargetsEvidenced, updateReassessmentAtVersion,
+} from "@tutorloop/db/repositories/reassessments";
 import { findStudentByAlias, lockStudentsByAlias } from "@tutorloop/db/repositories/students";
-import { assertIssueTransition, orderApprovedProposalItems } from "@tutorloop/domain";
+import { assertIssueTransition, canCompleteReassessment, orderApprovedProposalItems } from "@tutorloop/domain";
 import type { Kysely, Transaction } from "kysely";
 import type { AuthPrincipal } from "../../auth/principal.ts";
 import { ApiError } from "../../common/errors.ts";
@@ -27,6 +30,7 @@ type Db = Kysely<Database>;
 type Tx = Transaction<Database>;
 type Run = NonNullable<Awaited<ReturnType<typeof findProposalRun>>>;
 type Note = NonNullable<Awaited<ReturnType<typeof findRawNote>>>;
+type Reassessment = NonNullable<Awaited<ReturnType<typeof lockReassessment>>>;
 type Item = Awaited<ReturnType<typeof listProposalItems>>[number];
 type Approval = { item: Item; patch: Item["teacher_patch"]; payload: ProposalDraftItemV1; studentIssue?: EntityLink };
 type EntityLink = { entityId: string } | { proposalItemId: string };
@@ -277,6 +281,20 @@ async function applyApproval(approval: Approval, context: BatchContext): Promise
   }
 }
 
+async function reconcileReassessment(reassessment: Reassessment, approvals: Approval[], context: BatchContext) {
+  if (reassessment.status === "CANCELLED" || reassessment.status === "COMPLETED") return;
+  const { trx, results, now } = context;
+  const { class_id: classId, id } = reassessment;
+  const issueIds = approvals.flatMap(({ payload, studentIssue }) =>
+    payload.type === "CREATE_EVIDENCE" && studentIssue ? [referencedEntity(studentIssue, results)] : []);
+  if (!issueIds.length) return;
+  const changed = await markPendingReassessmentTargetsEvidenced(trx, classId, id, issueIds);
+  if (!changed.length) return;
+  const targets = await listReassessmentTargetStatuses(trx, classId, id);
+  const complete = canCompleteReassessment(targets.map(({ target_status }) => target_status));
+  await updateReassessmentAtVersion(trx, reassessment, complete ? { status: "COMPLETED", completed_at: now } : {}, now);
+}
+
 export function applyProposalDecisions(
   db: Db, principal: AuthPrincipal, classId: string, proposalRunId: string, input: ProposalDecisionBatchInput,
 ): Promise<ProposalRunDetailDto> {
@@ -305,6 +323,9 @@ export function applyProposalDecisions(
     }
     const byKey = new Map(items.map((item) => [item.original_payload.key, item]));
     const approvals = orderedApprovals(items, submitted).map((id) => prepareApproval(byId.get(id)!, submitted.get(id)!, byKey));
+    // Serialize aggregate changes before any Evidence insert takes a reassessment FK lock.
+    const reassessment = note.reassessment_id && approvals.some(({ payload }) => payload.type === "CREATE_EVIDENCE")
+      ? await lockReassessment(trx, run.class_id, note.reassessment_id) : undefined;
     // Lock the owning Students before issue rows so overlapping batches serialize even when their issue pairs are absent.
     const creationStudents = await lockCreationStudents(trx, run.class_id, approvals);
     const issues = await loadLockedIssues(trx, run.class_id, approvals);
@@ -314,6 +335,7 @@ export function applyProposalDecisions(
       const result = await applyApproval(approval, context);
       context.results.set(approval.item.id, result);
     }
+    if (reassessment) await reconcileReassessment(reassessment, approvals, context);
     for (const [id, decision] of submitted) {
       const result = context.results.get(id);
       await recordProposalDecision(trx, run.class_id, run.id, id, {

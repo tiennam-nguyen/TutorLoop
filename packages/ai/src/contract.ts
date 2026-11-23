@@ -24,6 +24,11 @@ export type StructureNoteInput = {
     state: StudentIssueState;
     version: number;
   }[];
+  evidenceHistory?: readonly {
+    studentIssueId: string;
+    observationText: string;
+    learningContext: string | null;
+  }[];
 };
 
 // An in-process port. A remote adapter must minimize and pseudonymize the input locally.

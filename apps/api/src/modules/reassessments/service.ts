@@ -183,7 +183,7 @@ export function changeReassessment(
         if (target.target_status !== "PENDING") throw new ApiError("VALIDATION_ERROR", "Reassessment target is already decided.");
         await skipPendingReassessmentTarget(trx, classroom.id, row.id, issueId, change.skipReason);
         const statuses = targets.map((item) => item === target ? "SKIPPED" : item.target_status);
-        const complete = row.status === "PERFORMED_PENDING_EVIDENCE" && canCompleteReassessment(statuses);
+        const complete = canCompleteReassessment(statuses);
         await updateReassessmentAtVersion(trx, row, complete ? { status: "COMPLETED", completed_at: time } : {}, time);
         break;
       }
