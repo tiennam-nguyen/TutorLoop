@@ -57,7 +57,7 @@ test("accepts a valid primary and records only versioned metadata and the sent p
   expect(result.attempts).toEqual([{
     provider: "GEMINI",
     model: "gemini-3.8-flash",
-    promptVersion: "structure-note-v1",
+    promptVersion: "structure-note-v2",
     schemaVersion: "1",
     redactionVersion: "1",
     inputHash: createHash("sha256").update(JSON.stringify(calls[0].userPayload)).digest("hex"),
@@ -287,4 +287,16 @@ test.each([
   expect((await createConfiguredNoteRouter({
     ...env, AI_PRIMARY_PROVIDER: model.provider, AI_PRIMARY_MODEL: model.model,
   }, fetcher)(note)).draft).toEqual(empty);
+});
+
+
+test("merge proposal restores both pseudonymous IDs and retains supplied canonical versions", async () => {
+  const input: StructureNoteInput = { ...note, canonicalIssues: [
+    { canonicalIssueId: "ci-source", label: "Source", description: null, version: 2 },
+    { canonicalIssueId: "ci-target", label: "Target", description: null, version: 3 },
+  ], studentIssues: [] };
+  const { route } = setup({ schemaVersion: "1", items: [{ key: "merge", type: "MERGE_CANONICAL_ISSUE",
+    sourceCanonicalIssueId: "CI_001", targetCanonicalIssueId: "CI_002", expectedSourceVersion: 2, expectedTargetVersion: 3 }] });
+  expect((await route(input)).draft.items).toEqual([{ key: "merge", type: "MERGE_CANONICAL_ISSUE",
+    sourceCanonicalIssueId: "ci-source", targetCanonicalIssueId: "ci-target", expectedSourceVersion: 2, expectedTargetVersion: 3 }]);
 });

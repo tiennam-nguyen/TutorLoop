@@ -73,6 +73,13 @@ export const proposalDraftItemV1Schema = z.discriminatedUnion("type", [
     learningContext: z.string().nullish(),
     observedAt: timestampSchema.optional(),
   }),
+  draftItemSchema.extend({
+    type: z.literal("MERGE_CANONICAL_ISSUE"),
+    sourceCanonicalIssueId: nonblankTextSchema,
+    targetCanonicalIssueId: nonblankTextSchema,
+    expectedSourceVersion: versionSchema,
+    expectedTargetVersion: versionSchema,
+  }),
   versionedStudentIssueDraftItemSchema.extend({
     type: z.literal("UPDATE_MANIFESTATION"),
     manifestation: z.string().nullable(),

@@ -1,6 +1,7 @@
 import {
   apiErrorBodySchema,
   canonicalIssueDetailDtoSchema,
+  canonicalIssueDtoSchema,
   canonicalIssueListDtoSchema,
   classDetailDtoSchema,
   classDtoSchema,
@@ -24,6 +25,8 @@ import {
   type ProposalDecisionBatchInput,
   type ReprocessRawNoteInput,
   type UpdateStudentInput,
+  type UpdateCanonicalIssueInput,
+  type MergeCanonicalIssueInput,
 } from "@tutorloop/contracts";
 
 export class ApiError extends Error {
@@ -174,4 +177,13 @@ export function markReassessmentPerformed(classId: string, reassessmentId: strin
 
 export function createReassessmentOutcomeNote(classId: string, reassessmentId: string, input: CreateReassessmentOutcomeNoteInput) {
   return read(`${reassessmentPath(classId, reassessmentId)}/outcome-note`, createRawNoteResponseSchema, json("POST", input));
+}
+
+
+export function updateCanonicalIssue(classId: string, issueId: string, input: UpdateCanonicalIssueInput) {
+  return read(`${classPath(classId)}/canonical-issues/${encodeURIComponent(issueId)}`, canonicalIssueDtoSchema, json("PATCH", input));
+}
+
+export function mergeCanonicalIssue(classId: string, issueId: string, input: MergeCanonicalIssueInput) {
+  return read(`${classPath(classId)}/canonical-issues/${encodeURIComponent(issueId)}/merge`, canonicalIssueDtoSchema, json("POST", input));
 }

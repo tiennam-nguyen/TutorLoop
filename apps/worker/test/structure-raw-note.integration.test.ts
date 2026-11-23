@@ -108,7 +108,7 @@ test("persists unresolved proposal payloads and same-run dependencies without wr
       { studentId: first.id, displayLabel: "An", aiAlias: "STU_001" },
       { studentId: second.id, displayLabel: "An", aiAlias: "STU_002" },
     ]),
-    canonicalIssues: [{ canonicalIssueId: issue.id, label: issue.label, description: null }],
+    canonicalIssues: [{ canonicalIssueId: issue.id, label: issue.label, description: null, version: 1 }],
     studentIssues: [],
   }]);
   expect(inputs[0].students).toHaveLength(2);
@@ -375,4 +375,73 @@ test("reprocess queues exactly one new job and preserves the earlier failed run"
     expect(conflict.json()).toMatchObject({ error: { code: "IDEMPOTENCY_CONFLICT" } });
   }
   expect(await db.selectFrom("jobs").select("id").execute()).toHaveLength(2);
+});
+
+
+test("merged aliases stay usable as historical Student Issue evidence while only roots are AI candidates", async () => {
+  const student = buildStudent(classId), source = buildCanonicalIssue(classId), target = buildCanonicalIssue(classId);
+  await db.insertInto("students").values(student).execute();
+  await db.insertInto("canonical_issues").values([source, target]).execute();
+  const issueId = randomUUID();
+  await db.insertInto("student_issues").values({ id: issueId, class_id: classId, student_id: student.id,
+    canonical_issue_id: source.id, state: "OPEN", manifestation: "Historical branch", created_at: now(), updated_at: now() }).execute();
+  const merge = await app.inject({ method: "POST", url: `/api/v1/classes/${classId}/canonical-issues/${source.id}/merge`,
+    payload: { targetCanonicalIssueId: target.id, expectedSourceVersion: 1, expectedTargetVersion: 1 } });
+  expect(merge.statusCode, merge.body).toBe(200);
+  const { jobId } = await capture();
+  await work(new FakeNoteStructurer((input) => {
+    expect(input.canonicalIssues).toEqual([{ canonicalIssueId: target.id, label: target.label, description: null, version: 1 }]);
+    expect(input.studentIssues).toEqual([expect.objectContaining({ studentIssueId: issueId, canonicalIssueId: target.id })]);
+    return { schemaVersion: "1", items: [{ key: "e", type: "CREATE_EVIDENCE", observationText: "Follow-up history",
+      studentRef: { kind: "RESOLVED", studentAlias: student.ai_alias }, studentIssueRef: { kind: "EXISTING", studentIssueId: issueId } }] };
+  }));
+  const run = await getRun(jobId), item = await db.selectFrom("proposal_items").selectAll().where("proposal_run_id", "=", run.id).executeTakeFirstOrThrow();
+  expect(await db.selectFrom("evidence_events").select("id").execute()).toHaveLength(0);
+  const response = await app.inject({ method: "POST", url: `/api/v1/classes/${classId}/proposal-runs/${run.id}/decisions`,
+    payload: { clientRequestId: randomUUID(), items: [{ proposalItemId: item.id, decision: "APPROVE" }] } });
+  expect(response.statusCode, response.body).toBe(200);
+  expect(await db.selectFrom("evidence_events").select("student_issue_id").execute()).toEqual([{ student_issue_id: issueId }]);
+  expect(await db.selectFrom("student_issues").select("canonical_issue_id").where("id", "=", issueId).executeTakeFirst())
+    .toEqual({ canonical_issue_id: source.id });
+  const scheduled = await app.inject({ method: "POST", url: `/api/v1/classes/${classId}/reassessments`, payload: {
+    studentIssueIds: [issueId], dueAt: "2026-11-20T07:00:00Z", clientRequestId: randomUUID(),
+  } });
+  expect(scheduled.statusCode, scheduled.body).toBe(201);
+  const reassessment = scheduled.json<{ id: string }>();
+  expect((await app.inject({ method: "POST", url: `/api/v1/classes/${classId}/reassessments/${reassessment.id}/mark-performed`,
+    payload: { expectedVersion: 1 } })).statusCode).toBe(200);
+  const outcome = await app.inject({ method: "POST", url: `/api/v1/classes/${classId}/reassessments/${reassessment.id}/outcome-note`,
+    payload: { body: "Outcome for historical branch", observedAt, clientRequestId: randomUUID() } });
+  expect(outcome.statusCode, outcome.body).toBe(201);
+  const outcomeNote = createRawNoteResponseSchema.parse(outcome.json());
+  await db.updateTable("jobs").set({ run_after: now() }).where("id", "=", outcomeNote.processing.jobId).execute();
+  await work(new FakeNoteStructurer((input) => {
+    expect(input.task).toBe("RECONCILE_REASSESSMENT_OUTCOME");
+    expect(input.canonicalIssues.map(({ canonicalIssueId }) => canonicalIssueId)).toEqual([target.id]);
+    expect(input.studentIssues.map(({ studentIssueId }) => studentIssueId)).toEqual([issueId]);
+    expect(input.evidenceHistory).toContainEqual(expect.objectContaining({ studentIssueId: issueId, observationText: "Follow-up history" }));
+    return { schemaVersion: "1", items: [{ key: "outcome", type: "CREATE_EVIDENCE", observationText: "Outcome evidence",
+      studentRef: { kind: "RESOLVED", studentAlias: student.ai_alias }, studentIssueRef: { kind: "EXISTING", studentIssueId: issueId } }] };
+  }));
+  const outcomeRun = await getRun(outcomeNote.processing.jobId);
+  const outcomeItem = await db.selectFrom("proposal_items").select("id").where("proposal_run_id", "=", outcomeRun.id).executeTakeFirstOrThrow();
+  const applied = await app.inject({ method: "POST", url: `/api/v1/classes/${classId}/proposal-runs/${outcomeRun.id}/decisions`,
+    payload: { clientRequestId: randomUUID(), items: [{ proposalItemId: outcomeItem.id, decision: "APPROVE" }] } });
+  expect(applied.statusCode, applied.body).toBe(200);
+  expect(await db.selectFrom("reassessments").select("status").where("id", "=", reassessment.id).executeTakeFirst())
+    .toEqual({ status: "COMPLETED" });
+});
+
+test("AI merge drafts persist pending canonical targets without autonomously merging", async () => {
+  const source = buildCanonicalIssue(classId), target = buildCanonicalIssue(classId);
+  await db.insertInto("canonical_issues").values([source, target]).execute();
+  const { jobId } = await capture();
+  await work(new FakeNoteStructurer(() => ({ schemaVersion: "1", items: [{ key: "m", type: "MERGE_CANONICAL_ISSUE",
+    sourceCanonicalIssueId: source.id, targetCanonicalIssueId: target.id, expectedSourceVersion: 1, expectedTargetVersion: 1 }] })));
+  const run = await getRun(jobId);
+  expect(await db.selectFrom("proposal_items").select(["item_type", "status", "target_entity_type", "target_entity_id", "base_version"])
+    .where("proposal_run_id", "=", run.id).execute()).toEqual([{ item_type: "MERGE_CANONICAL_ISSUE", status: "PENDING",
+      target_entity_type: "CANONICAL_ISSUE", target_entity_id: source.id, base_version: 1 }]);
+  expect(await db.selectFrom("canonical_issues").select("merged_into_id").where("id", "=", source.id).executeTakeFirst())
+    .toEqual({ merged_into_id: null });
 });

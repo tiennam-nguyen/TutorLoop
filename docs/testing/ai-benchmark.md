@@ -48,3 +48,10 @@ The first run started on a UTC date writes these files beneath `artifacts/ai-ben
 - `recommendation.json` records the ranking, dataset revision and digest, prompt/schema/redaction versions, and the first two eligible provider/model pairs. A candidate needs a valid draft with some semantic credit and zero flagged diagnosis or mastery claims. `primary` or `fallback` is `null` when there are fewer qualifying routes. The files are locally ignored by Git.
 
 Review the live artifact before pinning `AI_PRIMARY_PROVIDER`, `AI_PRIMARY_MODEL`, `AI_FALLBACK_PROVIDER`, and `AI_FALLBACK_MODEL`. The benchmark leaves runtime configuration to the operator. A real-data pilot requires both evidence-backed pins. Fake AI remains available for development while that gate is open.
+
+
+## Canonical merge extension
+
+The runtime now uses `structure-note-v2`. ProposalDraftV1 still has `schemaVersion: "1"` and accepts all saved five-type v1 drafts; its additive sixth type is `MERGE_CANONICAL_ISSUE`, with source/target IDs and expected versions. Active canonical candidates now carry versions and exclude merged sources. Historical Student Issue IDs remain available for evidence and reassessment updates, with their canonical candidate reference resolved to the current root. Remote IDs are still pseudonymous and restored locally.
+
+The provider JSON schema and prompt have therefore changed. Earlier `structure-note-v1` benchmark artifacts remain evidence only for their recorded prompt/schema/payload, and do not validate merge proposal quality or the v2 transport. The unchanged 32-case dataset has no merge scenario. Before relying on v2 live-provider routing for a real-data pilot, rerun the credential-gated benchmark and assess merge proposals separately. The canonical merge change uses deterministic fake-provider tests only and does not alter provider pins or historical benchmark artifacts.

@@ -144,7 +144,7 @@ test("persists sanitized retries and fallback, restores local refs, and keeps th
   for (const row of rows) {
     expect(row).toMatchObject({
       class_id: classroom.id, proposal_run_id: run.id, task_type: "STRUCTURE_OBSERVATION_NOTE",
-      prompt_version: "structure-note-v1", schema_version: "1", redaction_version: "1",
+      prompt_version: "structure-note-v2", schema_version: "1", redaction_version: "1",
       input_hash: createHash("sha256").update(sent).digest("hex"), latency_ms: expect.any(Number), usage_json: null,
     });
   }

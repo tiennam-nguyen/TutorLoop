@@ -13,6 +13,7 @@ import {
   isPersistedProposalRun, markProcessingRunReady,
 } from "@tutorloop/db/repositories/proposals";
 import { findRawNote } from "@tutorloop/db/repositories/raw-notes";
+import { listClassCanonicalIssues } from "@tutorloop/db/repositories/issues";
 import { listActiveStudents } from "@tutorloop/db/repositories/students";
 import { type Kysely, sql, type Transaction } from "kysely";
 
@@ -66,10 +67,24 @@ async function loadContext(
     listActiveStudents(db, classId),
     candidateQuery.execute(),
   ]);
-  const canonicalIds = [...new Set(studentIssues.map(({ canonical_issue_id }) => canonical_issue_id))];
+  const allCanonical = await listClassCanonicalIssues(db, classId);
+  const byId = new Map(allCanonical.map((issue) => [issue.id, issue]));
+  function rootId(id: string) {
+    const visited = new Set<string>();
+    for (let hops = 0; hops <= allCanonical.length; hops++) {
+      if (visited.has(id)) throw new StructureJobError("INVALID_JOB_PAYLOAD");
+      visited.add(id);
+      const issue = byId.get(id);
+      if (!issue) throw new StructureJobError("INVALID_JOB_PAYLOAD");
+      if (!issue.merged_into_id) return id;
+      id = issue.merged_into_id;
+    }
+    throw new StructureJobError("INVALID_JOB_PAYLOAD");
+  }
+  const canonicalIds = [...new Set(studentIssues.map(({ canonical_issue_id }) => rootId(canonical_issue_id)))];
   const [canonicalIssues, history] = await Promise.all([
-    db.selectFrom("canonical_issues").select(["id", "label", "description"])
-      .where("class_id", "=", classId)
+    db.selectFrom("canonical_issues").select(["id", "label", "description", "version"])
+      .where("class_id", "=", classId).where("merged_into_id", "is", null).where("archived_at", "is", null)
       .$if(outcome, (query) => query.where("id", "=", sql<string>`any(${canonicalIds}::uuid[])`))
       .orderBy("id").execute(),
     outcome ? listRecentIssueEvidence(db, classId, studentIssues.map(({ id }) => id)) : undefined,
@@ -84,10 +99,10 @@ async function loadContext(
       studentId: student.id, displayLabel: student.display_label, aiAlias: student.ai_alias,
     })),
     canonicalIssues: canonicalIssues.map((issue) => ({
-      canonicalIssueId: issue.id, label: issue.label, description: issue.description,
+      canonicalIssueId: issue.id, label: issue.label, description: issue.description, version: issue.version,
     })),
     studentIssues: studentIssues.map((issue) => ({
-      studentIssueId: issue.id, studentId: issue.student_id, canonicalIssueId: issue.canonical_issue_id,
+      studentIssueId: issue.id, studentId: issue.student_id, canonicalIssueId: rootId(issue.canonical_issue_id),
       manifestation: issue.manifestation, state: issue.state, version: issue.version,
     })),
     ...(history?.length ? { evidenceHistory: history.map((event) => ({
@@ -175,7 +190,7 @@ export async function processStructureRawNoteJob(job: StructureJobClaim, deps: S
     const persisted = await withCurrentStructureClaim(job, deps, async (trx, now) => {
       await insertProposalItems(trx, items.map(({ item, baseVersion, targetId }) => ({
         id: ids.get(item.key)!, class_id: run.class_id, proposal_run_id: run.id, item_type: item.type, original_payload: item,
-        status: "PENDING", target_entity_type: targetId ? "STUDENT_ISSUE" : null, target_entity_id: targetId,
+        status: "PENDING", target_entity_type: targetId ? (item.type === "MERGE_CANONICAL_ISSUE" ? "CANONICAL_ISSUE" : "STUDENT_ISSUE") : null, target_entity_id: targetId,
         base_version: baseVersion, created_at: now,
       })));
       for (const { item, dependencyKey } of items) {

@@ -8,7 +8,7 @@ import type { Database } from "@tutorloop/db/database";
 import { insertProposalEvidence } from "@tutorloop/db/repositories/evidence";
 import {
   appendStudentIssueTransition, auditManifestationEdit, findCanonicalIssue, insertCanonicalIssue, insertStudentIssue,
-  lockStudentIssues, type StudentIssueRow, updateStudentIssueAtVersion,
+  listClassCanonicalIssues, lockCanonicalGraph, lockStudentIssues, type StudentIssueRow, updateStudentIssueAtVersion,
 } from "@tutorloop/db/repositories/issues";
 import {
   claimProposalDecisionReceipt, findProposalRun, listProposalItems, lockProposalRun, recordProposalDecision,
@@ -24,6 +24,7 @@ import type { Kysely, Transaction } from "kysely";
 import type { AuthPrincipal } from "../../auth/principal.ts";
 import { ApiError } from "../../common/errors.ts";
 import { requireOwnedClass } from "../../common/ownership.ts";
+import { applyCanonicalMerge } from "../issues/service.ts";
 import { normalizeObservedAt, toRawNoteDto } from "../raw-notes/service.ts";
 
 type Db = Kysely<Database>;
@@ -75,8 +76,20 @@ function hashDecisions(items: ProposalDecisionInput[]): string {
   return createHash("sha256").update(json).digest("hex");
 }
 
-function toRunDetail(run: Run, note: Note, items: Item[]): ProposalRunDetailDto {
+async function toRunDetail(db: Db, run: Run, note: Note, items: Item[]): Promise<ProposalRunDetailDto> {
   if (run.schema_version !== "1") throw new Error("Unexpected proposal schema version.");
+  const referenceIds = new Set<string>();
+  for (const item of items) {
+    for (const candidate of [item.original_payload, { ...item.original_payload, ...item.teacher_patch }]) {
+      const payload = proposalDraftItemV1Schema.safeParse(candidate);
+      if (payload.success && payload.data.type === "MERGE_CANONICAL_ISSUE") {
+        referenceIds.add(payload.data.sourceCanonicalIssueId.toLowerCase());
+        referenceIds.add(payload.data.targetCanonicalIssueId.toLowerCase());
+      }
+    }
+  }
+  const references = referenceIds.size ? (await listClassCanonicalIssues(db, run.class_id))
+    .filter(({ id }) => referenceIds.has(id)).map(({ id, label, description }) => ({ id, label, description })) : [];
   return {
     id: run.id, classId: run.class_id, rawNote: toRawNoteDto(note), status: run.status, schemaVersion: run.schema_version,
     items: items.map((item) => ({
@@ -86,6 +99,7 @@ function toRunDetail(run: Run, note: Note, items: Item[]): ProposalRunDetailDto 
       baseVersion: item.base_version, resultEntityType: item.result_entity_type, resultEntityId: item.result_entity_id,
       decidedAt: item.decided_at?.toISOString() ?? null, createdAt: item.created_at.toISOString(),
     })),
+    ...(referenceIds.size ? { canonicalIssueReferences: references } : {}),
     createdAt: run.created_at.toISOString(), updatedAt: run.updated_at.toISOString(),
   };
 }
@@ -101,7 +115,7 @@ export function getProposalRun(db: Db, principal: AuthPrincipal, classId: string
     const classroom = await requireOwnedClass(trx, principal, classId);
     const run = await findProposalRun(trx, classroom.id, requireId(proposalRunId, "Proposal Run"));
     if (!run) notFound("Proposal Run");
-    return toRunDetail(run, await sourceNote(trx, run), await listProposalItems(trx, run.class_id, run.id));
+    return toRunDetail(trx, run, await sourceNote(trx, run), await listProposalItems(trx, run.class_id, run.id));
   });
 }
 
@@ -172,7 +186,7 @@ function prepareApproval(item: Item, decision: ProposalDecisionInput, byKey: Map
 async function loadLockedIssues(trx: Tx, classId: string, approvals: Approval[]) {
   const ids = new Set<string>();
   for (const { item, studentIssue } of approvals) {
-    if (item.target_entity_id) ids.add(item.target_entity_id);
+    if (item.target_entity_type === "STUDENT_ISSUE" && item.target_entity_id) ids.add(item.target_entity_id);
     if (studentIssue && "entityId" in studentIssue) ids.add(studentIssue.entityId);
   }
   const rows = await lockStudentIssues(trx, classId, [...ids]);
@@ -204,6 +218,7 @@ type BatchContext = {
   trx: Tx; note: Note; actor: string; now: Date; byKey: Map<unknown, Item>; results: Map<string, Result>;
   creationStudents: Map<string, string>;
   issues: Awaited<ReturnType<typeof loadLockedIssues>>;
+  canonicalGraph: Awaited<ReturnType<typeof lockCanonicalGraph>>;
 };
 
 async function resolveStudent(ref: StudentRef, { trx, note, creationStudents }: BatchContext): Promise<string> {
@@ -224,6 +239,14 @@ async function applyApproval(approval: Approval, context: BatchContext): Promise
   const { item, patch, payload, studentIssue } = approval;
   const classId = note.class_id;
   switch (payload.type) {
+    case "MERGE_CANONICAL_ISSUE": {
+      if (item.base_version !== null && item.base_version !== payload.expectedSourceVersion) {
+        throw new ApiError("STALE_VERSION", "Canonical Issue has changed.");
+      }
+      const changed = await applyCanonicalMerge(trx, context.canonicalGraph, payload.sourceCanonicalIssueId, payload, now);
+      context.canonicalGraph = context.canonicalGraph.map((row) => row.id === changed.id ? changed : row);
+      return { id: payload.targetCanonicalIssueId.toLowerCase(), type: "CANONICAL_ISSUE" };
+    }
     case "CREATE_CANONICAL_ISSUE": {
       const row = await insertCanonicalIssue(trx, {
         id: randomUUID(), class_id: classId, label: payload.label, description: payload.description ?? null,
@@ -314,7 +337,7 @@ export function applyProposalDecisions(
         claim.receipt.input_hash !== inputHash) {
         throw new ApiError("IDEMPOTENCY_CONFLICT", "The request ID was already used with different input.");
       }
-      return toRunDetail(run, note, items);
+      return toRunDetail(trx, run, note, items);
     }
 
     const { byId, submitted } = indexDecisions(items, input.items);
@@ -328,9 +351,11 @@ export function applyProposalDecisions(
       ? await lockReassessment(trx, run.class_id, note.reassessment_id) : undefined;
     // Lock the owning Students before issue rows so overlapping batches serialize even when their issue pairs are absent.
     const creationStudents = await lockCreationStudents(trx, run.class_id, approvals);
+    const canonicalGraph = approvals.some(({ payload }) => payload.type === "MERGE_CANONICAL_ISSUE")
+      ? await lockCanonicalGraph(trx, run.class_id) : [];
     const issues = await loadLockedIssues(trx, run.class_id, approvals);
     const now = new Date();
-    const context: BatchContext = { trx, note, actor: principal.userId, now, byKey, results: new Map(), creationStudents, issues };
+    const context: BatchContext = { trx, note, actor: principal.userId, now, byKey, results: new Map(), creationStudents, issues, canonicalGraph };
     for (const approval of approvals) {
       const result = await applyApproval(approval, context);
       context.results.set(approval.item.id, result);
@@ -346,7 +371,7 @@ export function applyProposalDecisions(
       });
     }
     const updated = await updateProposalReviewStatus(trx, run.class_id, run.id, now);
-    return toRunDetail(updated, note, await listProposalItems(trx, run.class_id, run.id));
+    return toRunDetail(trx, updated, note, await listProposalItems(trx, run.class_id, run.id));
   });
 }
 

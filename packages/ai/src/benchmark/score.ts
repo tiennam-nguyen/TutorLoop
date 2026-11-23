@@ -39,6 +39,7 @@ function sameStudent(expected: StudentRef, actual: StudentRef): boolean {
 
 function textParts(item: ProposalDraftItemV1): readonly (string | null | undefined)[] {
   switch (item.type) {
+    case "MERGE_CANONICAL_ISSUE": return [];
     case "CREATE_EVIDENCE": return [item.observationText, item.learningContext];
     case "CREATE_CANONICAL_ISSUE": return [item.label, item.description];
     case "CREATE_STUDENT_ISSUE":
@@ -81,6 +82,10 @@ function matchingItems(row: BenchmarkCase, draft: ProposalDraftV1) {
         row.contradictions?.[expected.key]?.some(contains)) return false;
     if ("studentRef" in expected && (!("studentRef" in actual) || !sameStudent(expected.studentRef, actual.studentRef))) {
       return false;
+    }
+    if (expected.type === "MERGE_CANONICAL_ISSUE" && actual.type === "MERGE_CANONICAL_ISSUE") {
+      return expected.sourceCanonicalIssueId === actual.sourceCanonicalIssueId && expected.targetCanonicalIssueId === actual.targetCanonicalIssueId &&
+        expected.expectedSourceVersion === actual.expectedSourceVersion && expected.expectedTargetVersion === actual.expectedTargetVersion;
     }
     if (expected.type === "CREATE_STUDENT_ISSUE" && actual.type === "CREATE_STUDENT_ISSUE") {
       const wanted = expected.canonicalIssueRef;

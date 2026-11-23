@@ -6,8 +6,17 @@ import { reassessmentsWithTargets } from "./reassessments.ts";
 
 type Db = Kysely<Database>;
 
+function canonicalRoots(db: Db, classId: string) {
+  return db.withRecursive("canonical_roots", (cte) => cte
+    .selectFrom("canonical_issues as canonical").select(["canonical.id as issue_id", "canonical.id as root_id"])
+    .where("canonical.class_id", "=", classId).where("canonical.merged_into_id", "is", null)
+    .union(cte.selectFrom("canonical_issues as source").innerJoin("canonical_roots as root", "root.issue_id", "source.merged_into_id")
+      .select(["source.id as issue_id", "root.root_id"]).where("source.class_id", "=", classId)));
+}
+
 function activeStudentIssues(db: Db, classId: string) {
-  return db.selectFrom("student_issues as issue")
+  return canonicalRoots(db, classId).selectFrom("student_issues as issue")
+    .innerJoin("canonical_roots as root", "root.issue_id", "issue.canonical_issue_id")
     .innerJoin("students as student", (join) => join
       .onRef("student.id", "=", "issue.student_id").onRef("student.class_id", "=", "issue.class_id"))
     .where("issue.class_id", "=", classId)
@@ -16,15 +25,15 @@ function activeStudentIssues(db: Db, classId: string) {
 
 function canonicalIssueSummaries(db: Db, classId: string, now: Date, canonicalIssueId?: string) {
   const active = activeStudentIssues(db, classId);
-  const scoped = canonicalIssueId === undefined ? active : active.where("issue.canonical_issue_id", "=", canonicalIssueId);
+  const scoped = canonicalIssueId === undefined ? active : active.where("root.root_id", "=", canonicalIssueId);
   const counts = scoped
     .select(({ fn, exists, selectFrom }) => [
-      "issue.canonical_issue_id",
-      fn.count("issue.id").filterWhere("issue.state", "=", "OPEN").as("open_count"),
-      fn.count("issue.id").filterWhere("issue.state", "=", "IMPROVING").as("improving_count"),
-      fn.count("issue.id").filterWhere("issue.state", "=", "RESOLVED_FOR_NOW").as("resolved_count"),
+      "root.root_id as canonical_issue_id",
+      fn.count("issue.student_id").distinct().filterWhere("issue.state", "=", "OPEN").as("open_count"),
+      fn.count("issue.student_id").distinct().filterWhere("issue.state", "=", "IMPROVING").as("improving_count"),
+      fn.count("issue.student_id").distinct().filterWhere("issue.state", "=", "RESOLVED_FOR_NOW").as("resolved_count"),
       fn.count("issue.student_id").distinct().as("affected_students"),
-      fn.count("issue.id").filterWhere(exists(
+      fn.count("issue.student_id").distinct().filterWhere(exists(
         selectFrom("reassessment_targets as target")
           .innerJoin("reassessments as reassessment", (join) => join
             .onRef("reassessment.id", "=", "target.reassessment_id").onRef("reassessment.class_id", "=", "target.class_id"))
@@ -32,13 +41,13 @@ function canonicalIssueSummaries(db: Db, classId: string, now: Date, canonicalIs
           .whereRef("target.student_issue_id", "=", "issue.id")
           .where("reassessment.status", "=", "SCHEDULED").where("reassessment.due_at", "<=", now),
       )).as("due_count"),
-    ]).groupBy("issue.canonical_issue_id").as("counts");
+    ]).groupBy("root.root_id").as("counts");
 
   return db.selectFrom("canonical_issues as canonical")
     .leftJoin(counts, "counts.canonical_issue_id", "canonical.id")
     .selectAll("canonical")
     .select(["counts.open_count", "counts.improving_count", "counts.resolved_count", "counts.affected_students", "counts.due_count"])
-    .where("canonical.class_id", "=", classId);
+    .where("canonical.class_id", "=", classId).where("canonical.merged_into_id", "is", null);
 }
 
 export function listCanonicalIssueSummaries(db: Db, classId: string, now: Date) {
@@ -53,7 +62,7 @@ export function listActiveClassStudentIssues(db: Db, classId: string, canonicalI
   return activeStudentIssues(db, classId).selectAll("issue").select([
     "student.display_label", "student.ai_alias", "student.archived_at as student_archived_at",
     "student.version as student_version", "student.created_at as student_created_at", "student.updated_at as student_updated_at",
-  ]).where("issue.canonical_issue_id", "=", canonicalIssueId).orderBy("issue.created_at").orderBy("issue.id").execute();
+  ]).where("root.root_id", "=", canonicalIssueId).orderBy("issue.created_at").orderBy("issue.id").execute();
 }
 
 export function listActiveClassIssueEvidence(db: Db, classId: string, canonicalIssueId: string) {
@@ -63,17 +72,18 @@ export function listActiveClassIssueEvidence(db: Db, classId: string, canonicalI
       .onRef("evidence.student_id", "=", "issue.student_id")
       .onRef("evidence.class_id", "=", "issue.class_id"))
     .select(["issue.id as student_issue_id", "evidence.id"])
-    .where("issue.canonical_issue_id", "=", canonicalIssueId)
+    .where("root.root_id", "=", canonicalIssueId)
     .orderBy("evidence.observed_at").orderBy("evidence.created_at").orderBy("evidence.id").execute();
 }
 
 export function listStudentIssuesWithCanonicalIssue(db: Db, classId: string, studentId: string) {
-  return db.selectFrom("student_issues as issue")
+  return canonicalRoots(db, classId).selectFrom("student_issues as issue")
+    .innerJoin("canonical_roots as root", "root.issue_id", "issue.canonical_issue_id")
     .innerJoin("canonical_issues as canonical", (join) => join
-      .onRef("canonical.id", "=", "issue.canonical_issue_id").onRef("canonical.class_id", "=", "issue.class_id"))
+      .onRef("canonical.id", "=", "root.root_id").onRef("canonical.class_id", "=", "issue.class_id"))
     .selectAll("issue")
     .select([
-      "canonical.label", "canonical.description", "canonical.merged_into_id", "canonical.archived_at",
+      "canonical.id as resolved_canonical_id", "canonical.label", "canonical.description", "canonical.merged_into_id", "canonical.archived_at",
       "canonical.version as canonical_version", "canonical.created_at as canonical_created_at",
       "canonical.updated_at as canonical_updated_at",
     ]).where("issue.class_id", "=", classId).where("issue.student_id", "=", studentId)
@@ -108,7 +118,8 @@ function listInterventionHistory(db: Db, classId: string, match: "student_id" | 
       .select("target.intervention_id")
       .whereRef("target.intervention_id", "=", "interventions.id")
       .whereRef("target.class_id", "=", "interventions.class_id")
-      .where(`issue.${match}`, "=", id),
+      .where((scope) => match === "student_id" ? scope("issue.student_id", "=", id) : scope("issue.canonical_issue_id", "in",
+        canonicalRoots(db, classId).selectFrom("canonical_roots").select("issue_id").where("root_id", "=", id))),
   )).orderBy("interventions.occurred_at").orderBy("interventions.created_at").orderBy("interventions.id").execute();
 }
 
@@ -128,7 +139,8 @@ function listReassessmentHistory(db: Db, classId: string, match: "student_id" | 
       .select("target.reassessment_id")
       .whereRef("target.reassessment_id", "=", "reassessments.id")
       .whereRef("target.class_id", "=", "reassessments.class_id")
-      .where(`issue.${match}`, "=", id),
+      .where((scope) => match === "student_id" ? scope("issue.student_id", "=", id) : scope("issue.canonical_issue_id", "in",
+        canonicalRoots(db, classId).selectFrom("canonical_roots").select("issue_id").where("root_id", "=", id))),
   )).orderBy(sql<Date>`coalesce(reassessments.performed_at, reassessments.due_at)`).orderBy("reassessments.id").execute();
 }
 

@@ -37,6 +37,17 @@ export function IssueActivityForm({ classroom, issue, activity, studentNames }: 
   const candidates = selected.length ? issue.interventions.filter((prior) =>
     selected.every((id) => prior.studentIssueIds.includes(id))) : [];
 
+  function targetLabel(target: CanonicalIssueDetailDto["studentIssues"][number]) {
+    const name = studentNames.get(target.studentId) ?? target.student.displayLabel;
+    const branches = issue.studentIssues.filter(({ studentId }) => studentId === target.studentId);
+    if (branches.length === 1) return name;
+    const manifestation = target.manifestation?.trim() || "No manifestation";
+    const matching = branches.filter((branch) => (branch.manifestation?.trim() || "No manifestation") === manifestation)
+      .toSorted((left, right) => left.id.localeCompare(right.id));
+    const suffix = matching.length > 1 ? ` · Branch ${matching.findIndex(({ id }) => id === target.id) + 1}` : "";
+    return `${name} · ${manifestation}${suffix}`;
+  }
+
   function edit() {
     requestId.current = null;
     setError(null);
@@ -117,9 +128,9 @@ export function IssueActivityForm({ classroom, issue, activity, studentNames }: 
       </label>
       <fieldset className="target-options" disabled={saving}>
         <legend>Students</legend>
-        {issue.studentIssues.map(({ id, student }) => <label key={id}>
-          <input type="checkbox" checked={selected.includes(id)} onChange={(event) => select(id, event.target.checked)} />
-          {studentNames.get(student.id) ?? student.displayLabel}
+        {issue.studentIssues.map((target) => <label key={target.id}>
+          <input type="checkbox" checked={selected.includes(target.id)} onChange={(event) => select(target.id, event.target.checked)} />
+          {targetLabel(target)}
         </label>)}
       </fieldset>
       {scheduling && issue.interventions.length > 0 && <label>

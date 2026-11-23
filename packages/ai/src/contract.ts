@@ -15,6 +15,7 @@ export type StructureNoteInput = {
     canonicalIssueId: string;
     label: string;
     description: string | null;
+    version?: number;
   }[];
   studentIssues: readonly {
     studentIssueId: string;
@@ -83,6 +84,15 @@ export function prepareDraftForPersistence(
       return;
     }
 
+    if (item.type === "MERGE_CANONICAL_ISSUE") {
+      const source = input.canonicalIssues.find(({ canonicalIssueId }) => canonicalIssueId === item.sourceCanonicalIssueId.toLowerCase());
+      const target = input.canonicalIssues.find(({ canonicalIssueId }) => canonicalIssueId === item.targetCanonicalIssueId.toLowerCase());
+      if (!source || !target || source === target || source.version !== item.expectedSourceVersion ||
+        target.version !== item.expectedTargetVersion || item.expectedSourceVersion > 2_147_483_647 ||
+        item.expectedTargetVersion > 2_147_483_647) return;
+      prepared.push({ item, dependencyKey: null, baseVersion: item.expectedSourceVersion, targetId: item.sourceCanonicalIssueId });
+      continue;
+    }
     const baseVersion = "expectedVersion" in item ? item.expectedVersion : null;
     if (baseVersion !== null && baseVersion > 2_147_483_647) return;
     prepared.push({

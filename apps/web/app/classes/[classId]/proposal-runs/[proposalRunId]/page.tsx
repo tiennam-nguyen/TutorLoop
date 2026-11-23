@@ -23,7 +23,7 @@ async function loadReview(classId: string, runId: string, signal: AbortSignal) {
   const [classroom, run] = await Promise.all([getClassDetail(classId, signal), getProposalRun(classId, runId, signal)]);
   const payloads = run.items.map((item) => proposalPayload(item));
   const existingLinks = payloads.some((item) => "studentIssueRef" in item && item.studentIssueRef?.kind === "EXISTING");
-  const issues = existingLinks || payloads.some((item) => item.type === "CREATE_STUDENT_ISSUE")
+  const issues = existingLinks || payloads.some((item) => item.type === "CREATE_STUDENT_ISSUE" || item.type === "MERGE_CANONICAL_ISSUE")
     ? await listCanonicalIssues(classId, signal) : [];
   const issueDetails = existingLinks ? await Promise.all(issues.map(({ id }) => getCanonicalIssue(classId, id, signal))) : [];
   return { classroom, run, issues, issueDetails };

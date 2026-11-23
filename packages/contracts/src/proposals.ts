@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { classParamsSchema, idSchema, timestampSchema, versionSchema } from "./common.ts";
 import { proposalDraftItemV1Schema } from "./ai.ts";
+import { canonicalIssueDtoSchema } from "./issues.ts";
 import { rawNoteDtoSchema } from "./raw-notes.ts";
 
 export const proposalRunParamsSchema = classParamsSchema.extend({ proposalRunId: idSchema });
@@ -62,6 +63,8 @@ export const proposalRunDetailDtoSchema = z.object({
   status: proposalRunStatusSchema,
   schemaVersion: z.literal("1"),
   items: z.array(proposalItemDtoSchema),
+  // Exact historical merge references for display; these are not active selection candidates.
+  canonicalIssueReferences: z.array(canonicalIssueDtoSchema.pick({ id: true, label: true, description: true })).optional(),
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
 });

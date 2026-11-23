@@ -2,6 +2,8 @@ import type { StructureNoteInput } from "../../../packages/ai/src/contract.ts";
 import type { ProposalDraftItemV1, ProposalDraftV1, StudentRef } from "../../../packages/contracts/src/index.ts";
 
 export const notes = {
+  mergeSeed: "Seed merge history branches.",
+  merge: "These two sign issues describe the same issue.",
   shared: "An và Bình lại sai dấu khi chuyển vế.",
   projection: "An và Bình cần xem lại lỗi dấu khi chuyển vế.",
   ambiguousStudent: "Minh lại sai dấu khi chuyển vế.",
@@ -47,6 +49,21 @@ export function captureFixtures(signal: AbortSignal) {
     };
 
     switch (input.body) {
+      case notes.mergeSeed:
+        return draft([...["Source", "Target"].flatMap((name): ProposalDraftItemV1[] => [
+          { key: name, type: "CREATE_CANONICAL_ISSUE", label: `${name} sign issue` },
+          { key: `${name}-issue`, type: "CREATE_STUDENT_ISSUE", studentRef: resolved("An"),
+            canonicalIssueRef: { kind: "PROPOSED", proposalKey: name }, manifestation: `${name} manifestation` },
+          { key: `${name}-evidence`, type: "CREATE_EVIDENCE", studentRef: resolved("An"),
+            studentIssueRef: { kind: "PROPOSED", proposalKey: `${name}-issue` }, observationText: `${name} evidence` },
+        ])]);
+      case notes.merge: {
+        const source = input.canonicalIssues.find(({ label }) => label === "Teacher source label");
+        const target = input.canonicalIssues.find(({ label }) => label === "Target sign issue");
+        if (!source || !target) throw new Error("Missing merge fixture candidates");
+        return draft([{ key: "merge", type: "MERGE_CANONICAL_ISSUE", sourceCanonicalIssueId: source.canonicalIssueId,
+          targetCanonicalIssueId: target.canonicalIssueId, expectedSourceVersion: source.version!, expectedTargetVersion: target.version! }]);
+      }
       case notes.shared:
       case notes.projection:
         // The browser releases this test-only gate after two completed status reads.

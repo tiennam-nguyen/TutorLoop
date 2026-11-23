@@ -3,7 +3,7 @@
 import {
   addStudentInputSchema, proposalDraftItemV1Schema, studentIssueStateSchema,
   type CanonicalIssueDetailDto, type CanonicalIssueRef, type CanonicalIssueSummaryDto, type ProposalDraftItemV1,
-  type ProposalItemDto, type StudentDto, type StudentIssueRef, type StudentIssueState, type StudentRef,
+  type ProposalItemDto, type ProposalRunDetailDto, type StudentDto, type StudentIssueRef, type StudentIssueState, type StudentRef,
 } from "@tutorloop/contracts";
 import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { addStudent } from "../lib/api";
@@ -13,6 +13,8 @@ import { useWorkspaceError } from "../lib/session";
 export type Choice = "approve" | "edit" | "reject";
 
 export type ReviewPatch = Partial<{
+  targetCanonicalIssueId: string;
+  expectedTargetVersion: number;
   label: string;
   description: string | null;
   studentRef: StudentRef;
@@ -29,12 +31,14 @@ export type ReviewDraft = { choice?: Choice; patch?: ReviewPatch };
 export type ReviewContext = {
   students: StudentDto[];
   issues: CanonicalIssueSummaryDto[];
+  canonicalIssueReferences?: ProposalRunDetailDto["canonicalIssueReferences"];
   issueDetails: CanonicalIssueDetailDto[];
   items: ProposalItemDto[];
   drafts: Record<string, ReviewDraft>;
 };
 
 const kinds = {
+  MERGE_CANONICAL_ISSUE: { title: "Merge Canonical Issues", theme: "issue" },
   CREATE_CANONICAL_ISSUE: { title: "Canonical Issue", theme: "issue" },
   CREATE_STUDENT_ISSUE: { title: "Student Issue", theme: "issue" },
   CREATE_EVIDENCE: { title: "Evidence", theme: "evidence" },
@@ -66,9 +70,15 @@ export function proposalHeading(item: ProposalItemDto, context: ReviewContext): 
   return "studentRef" in payload ? `${title} · ${studentName(payload.studentRef, context.students)}` : title;
 }
 
-function canonicalLabel(ref: CanonicalIssueRef, { items, issues, drafts }: ReviewContext): string {
+function canonicalLabel(ref: CanonicalIssueRef, { items, issues, canonicalIssueReferences = [], drafts }: ReviewContext): string {
   if (ref.kind === "AMBIGUOUS") return "Selection required";
-  if (ref.kind === "EXISTING") return issues.find(({ id }) => id === ref.canonicalIssueId.toLowerCase())?.label ?? "Existing Canonical Issue";
+  if (ref.kind === "EXISTING") {
+    const references = [...new Map([...canonicalIssueReferences, ...issues].map((issue) => [issue.id, issue])).values()];
+    const issue = references.find(({ id }) => id === ref.canonicalIssueId.toLowerCase());
+    if (!issue) return `Canonical Issue ${ref.canonicalIssueId}`;
+    return references.some((other) => other.id !== issue.id && other.label === issue.label)
+      ? `${issue.label} · ${issue.description ? `${issue.description} · ` : ""}${issue.id.slice(0, 8)}` : issue.label;
+  }
   const original = items.find(({ originalPayload }) => originalPayload.key === ref.proposalKey);
   const payload = original && proposalPayload(original, drafts[original.id]?.patch);
   return payload?.type === "CREATE_CANONICAL_ISSUE" ? payload.label : "Proposed Canonical Issue";
@@ -92,6 +102,12 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
 
 function ProposalDetails({ payload, context, pending }: { payload: ProposalDraftItemV1; context: ReviewContext; pending: boolean }) {
   switch (payload.type) {
+    case "MERGE_CANONICAL_ISSUE":
+      return <dl className="proposal-details">
+        <Detail label="Source issue">{canonicalLabel({ kind: "EXISTING", canonicalIssueId: payload.sourceCanonicalIssueId }, context)}</Detail>
+        <Detail label="Merge into">{canonicalLabel({ kind: "EXISTING", canonicalIssueId: payload.targetCanonicalIssueId }, context)}</Detail>
+        <Detail label="History">Both issues and their student history will be preserved.</Detail>
+      </dl>;
     case "CREATE_CANONICAL_ISSUE":
       return <dl className="proposal-details">
         <Detail label="New issue">{payload.label}</Detail>
@@ -305,6 +321,15 @@ export function ProposalCard({ item, context, draft, classId, readOnly, busy, ap
             {showIssue && payload.type === "CREATE_STUDENT_ISSUE" && (
               <CanonicalIssueSelector original={original.canonicalIssueRef} resolved={payload.canonicalIssueRef} issues={context.issues} onPatch={onPatch} />
             )}
+            {editing && payload.type === "MERGE_CANONICAL_ISSUE" && <label>Merge target
+              <select value={payload.targetCanonicalIssueId} onChange={(event) => {
+                const target = context.issues.find(({ id }) => id === event.target.value);
+                if (target) onPatch({ targetCanonicalIssueId: target.id, expectedTargetVersion: target.version });
+              }}>
+                {context.issues.filter(({ id, mergedIntoId, archivedAt }) => id !== payload.sourceCanonicalIssueId && !mergedIntoId && !archivedAt)
+                  .map(({ id }) => <option key={id} value={id}>{canonicalLabel({ kind: "EXISTING", canonicalIssueId: id }, context)}</option>)}
+              </select>
+            </label>}
             {editing && <EditableFields payload={payload} onPatch={onPatch} />}
           </fieldset>
           {"studentRef" in original && original.studentRef.kind === "UNKNOWN" &&

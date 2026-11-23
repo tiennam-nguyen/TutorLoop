@@ -14,7 +14,7 @@ import {
 } from "./proposal-card";
 
 const reviewOrder = {
-  CREATE_CANONICAL_ISSUE: 0, CREATE_STUDENT_ISSUE: 1, CREATE_EVIDENCE: 2, UPDATE_MANIFESTATION: 3, TRANSITION_STUDENT_ISSUE: 4,
+  MERGE_CANONICAL_ISSUE: 5, CREATE_CANONICAL_ISSUE: 0, CREATE_STUDENT_ISSUE: 1, CREATE_EVIDENCE: 2, UPDATE_MANIFESTATION: 3, TRANSITION_STUDENT_ISSUE: 4,
 } satisfies Record<ProposalDraftItemV1["type"], number>;
 
 function isApproval(choice: Choice | undefined) {
@@ -57,7 +57,7 @@ export function ProposalReview({ classroom, run, issues, issueDetails, onApplied
   const [error, setError] = useState<string | null>(null);
   const [applied, setApplied] = useState(false);
   const requestId = useRef<string | null>(null);
-  const context: ReviewContext = { students, issues, issueDetails, items: run.items, drafts };
+  const context: ReviewContext = { students, issues, canonicalIssueReferences: run.canonicalIssueReferences, issueDetails, items: run.items, drafts };
   const byId = new Map(run.items.map((item) => [item.id, item]));
   const readOnly = classroom.archivedAt !== null || !["READY", "PARTIALLY_REVIEWED"].includes(run.status);
   const busy = saving || addingStudent;

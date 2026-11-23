@@ -3,6 +3,8 @@ import {
   type EvidenceDto, idSchema, type StudentIssueDto, type StudentIssueTransitionDto, type StudentOverviewDto,
 } from "@tutorloop/contracts";
 import type { Database } from "@tutorloop/db/database";
+import { listClassCanonicalIssues } from "@tutorloop/db/repositories/issues";
+import { resolveCanonicalRoot } from "../issues/service.ts";
 import type { StudentIssueRow } from "@tutorloop/db/repositories/issues";
 import {
   findCanonicalIssueSummary, listActiveClassIssueEvidence, listActiveClassStudentIssues, listCanonicalIssueInterventions,
@@ -97,7 +99,7 @@ export function getStudentOverview(db: Db, principal: AuthPrincipal, classId: st
     const studentIssues = issues.map((row) => ({
       ...toStudentIssueDto(row),
       canonicalIssue: toCanonicalIssueDto({
-        id: row.canonical_issue_id, class_id: row.class_id, label: row.label, description: row.description,
+        id: row.resolved_canonical_id, class_id: row.class_id, label: row.label, description: row.description,
         merged_into_id: row.merged_into_id, archived_at: row.archived_at, version: row.canonical_version,
         created_at: row.canonical_created_at, updated_at: row.canonical_updated_at,
       }),
@@ -125,7 +127,7 @@ export function getClassIssueDetail(
   return db.transaction().setIsolationLevel("repeatable read").execute(async (trx) => {
     const classroom = await requireOwnedClass(trx, principal, classId);
     const canonical = idSchema.safeParse(canonicalIssueId).success
-      ? await findCanonicalIssueSummary(trx, classroom.id, canonicalIssueId, now) : undefined;
+      ? await findCanonicalIssueSummary(trx, classroom.id, resolveCanonicalRoot(await listClassCanonicalIssues(trx, classroom.id), canonicalIssueId).id, now) : undefined;
     if (!canonical) throw new ApiError("NOT_FOUND", "Canonical Issue not found.");
 
     const issues = await listActiveClassStudentIssues(trx, classroom.id, canonical.id);

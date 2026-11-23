@@ -22,7 +22,7 @@ export interface AIProviderAdapter {
 export type AIRunRecordInput = {
   provider: AIModelConfig["provider"];
   model: string;
-  promptVersion: "structure-note-v1";
+  promptVersion: "structure-note-v1" | "structure-note-v2";
   schemaVersion: "1";
   redactionVersion: "1";
   inputHash: string;
@@ -48,7 +48,7 @@ export class AIProcessingError extends Error {
   }
 }
 
-const PROMPT_VERSION = "structure-note-v1";
+const PROMPT_VERSION = "structure-note-v2";
 const SCHEMA_VERSION = "1";
 export const STRUCTURE_NOTE_VERSIONS = {
   promptVersion: PROMPT_VERSION, schemaVersion: SCHEMA_VERSION, redactionVersion: "1",
@@ -61,6 +61,7 @@ const SYSTEM_PROMPT = [
   "Redacted values such as [PRIVATE] do not identify students.",
   "Preserve uncertainty. Use an empty items array if there are no supported proposals.",
   "Use each existing student issue's supplied version when proposing an update. Give every item a unique key.",
+  "You may propose MERGE_CANONICAL_ISSUE for two provided canonical candidates only when the note supports it. Supply both IDs and their versions; the teacher decides.",
   "Use observedAt only for an explicit, unambiguous timestamp in the note, otherwise omit it or use null if required.",
 ].join("\n");
 
@@ -85,6 +86,7 @@ function minimizeNote(input: StructureNoteInput, privateLabels?: readonly string
     canonicalIssueId: canonicalAliases.get(issue.canonicalIssueId),
     label: minimize(issue.label),
     description: issue.description === null ? null : minimize(issue.description),
+    ...(issue.version !== undefined ? { version: issue.version } : {}),
   }));
   const studentIssues = input.studentIssues.map((issue) => ({
     studentIssueId: studentIssueAliases.get(issue.studentIssueId),
@@ -182,6 +184,10 @@ function restoreIssueId(ids: ReadonlyMap<string, string>, alias: string): string
 function restoreReferences(
   item: ProposalDraftItemV1, { canonicalIds, studentIssueIds }: ReturnType<typeof minimizeNote>,
 ): ProposalDraftItemV1 {
+  if (item.type === "MERGE_CANONICAL_ISSUE") {
+    return { ...item, sourceCanonicalIssueId: restoreIssueId(canonicalIds, item.sourceCanonicalIssueId),
+      targetCanonicalIssueId: restoreIssueId(canonicalIds, item.targetCanonicalIssueId) };
+  }
   if (item.type === "CREATE_STUDENT_ISSUE") {
     const ref = item.canonicalIssueRef;
     if (ref.kind === "EXISTING") {

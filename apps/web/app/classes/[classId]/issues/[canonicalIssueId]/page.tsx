@@ -5,9 +5,10 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppShell } from "../../../../../components/app-shell";
+import { CanonicalIssueMaintenance } from "../../../../../components/canonical-issue-maintenance";
 import { EvidenceEntry } from "../../../../../components/evidence-entry";
 import { IssueActivityForm } from "../../../../../components/reassessment-form";
-import { getCanonicalIssue, getClassDetail, getStudentOverview } from "../../../../../lib/api";
+import { getCanonicalIssue, getClassDetail, getStudentOverview, listCanonicalIssues } from "../../../../../lib/api";
 import { formatObservedTime } from "../../../../../lib/observed-time";
 import { rosterLabels } from "../../../../../lib/roster-labels";
 import { useWorkspaceError } from "../../../../../lib/session";
@@ -23,14 +24,14 @@ export default function ClassIssuePage() {
 }
 
 async function loadIssue(classId: string, issueId: string, signal: AbortSignal) {
-  const [classroom, issue] = await Promise.all([
-    getClassDetail(classId, signal), getCanonicalIssue(classId, issueId, signal),
+  const [classroom, issue, candidates] = await Promise.all([
+    getClassDetail(classId, signal), getCanonicalIssue(classId, issueId, signal), listCanonicalIssues(classId, signal),
   ]);
   const studentIds = [...new Set(issue.studentIssues.map(({ studentId }) => studentId))];
   const overviews = await Promise.all(studentIds.map((studentId) => getStudentOverview(classId, studentId, signal)));
   const evidence = new Map<string, EvidenceDto>();
   for (const overview of overviews) for (const event of overview.evidence) evidence.set(event.id, event);
-  return { classroom, issue, evidence };
+  return { classroom, issue, evidence, candidates };
 }
 
 function ClassIssue({ classId, issueId }: { classId: string; issueId: string }) {
@@ -51,6 +52,8 @@ function ClassIssue({ classId, issueId }: { classId: string; issueId: string }) 
     </nav>
     <div className="page-heading"><div><h1>{data?.issue.label ?? "Issue detail"}</h1>
       {data && <p className="muted">{data.classroom.name}</p>}</div></div>
+    {data && !data.classroom.archivedAt && !data.issue.archivedAt && <CanonicalIssueMaintenance key={`${data.issue.id}/${data.issue.version}`}
+      classId={classId} issue={data.issue} candidates={data.candidates} onSaved={() => setAttempt((value) => value + 1)} />}
     {data ? <IssueDetail {...data} onHistoryChange={(update) => setData((previous) =>
       previous && { ...previous, issue: update(previous.issue) })} /> : error ? <>
       <p role="alert">{error}</p><button type="button" onClick={() => { setError(null); setAttempt((value) => value + 1); }}>Try again</button>

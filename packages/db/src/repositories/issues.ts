@@ -46,3 +46,26 @@ export async function auditManifestationEdit(db: Transaction<Database>, issue: S
     actor_user_id: actor, action: "UPDATE_MANIFESTATION", created_at: now,
   }).executeTakeFirst();
 }
+
+
+export type CanonicalIssueRow = Selectable<Database["canonical_issues"]>;
+
+// A class row lock serializes graph mutations, including disjoint pairs whose paths may overlap.
+// NO KEY UPDATE stays compatible with the class FK locks used by history/proposal inserts.
+export async function lockCanonicalGraph(db: Transaction<Database>, classId: string) {
+  await db.selectFrom("classes").select("id").where("id", "=", classId).forNoKeyUpdate().executeTakeFirstOrThrow();
+  return listClassCanonicalIssues(db, classId);
+}
+
+export function listClassCanonicalIssues(db: Kysely<Database>, classId: string) {
+  return db.selectFrom("canonical_issues").selectAll().where("class_id", "=", classId).orderBy("id").execute();
+}
+
+export function updateCanonicalIssueAtVersion(
+  db: Transaction<Database>, issue: CanonicalIssueRow,
+  changes: Pick<Updateable<Database["canonical_issues"]>, "label" | "description" | "merged_into_id">, now: Date,
+) {
+  return db.updateTable("canonical_issues").set((eb) => ({ ...changes, updated_at: now, version: eb("version", "+", 1) }))
+    .where("class_id", "=", issue.class_id).where("id", "=", issue.id)
+    .where("version", "=", sql<number>`${issue.version}::bigint`).returningAll().executeTakeFirstOrThrow();
+}
