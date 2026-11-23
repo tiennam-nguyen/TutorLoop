@@ -7,6 +7,7 @@ import {
 } from "@tutorloop/contracts";
 import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { addStudent } from "../lib/api";
+import { rosterLabels } from "../lib/roster-labels";
 import { useWorkspaceError } from "../lib/session";
 
 export type Choice = "approve" | "edit" | "reject";
@@ -166,13 +167,9 @@ function EditableFields({ payload, onPatch }: { payload: ProposalDraftItemV1; on
 function StudentSelector({ original, resolved, students, onPatch }: {
   original: StudentRef; resolved: StudentRef; students: StudentDto[]; onPatch: (patch: ReviewPatch) => void;
 }) {
-  const labelCounts = new Map<string, number>();
-  const roster = students.map((student, index) => {
-    labelCounts.set(student.displayLabel, (labelCounts.get(student.displayLabel) ?? 0) + 1);
-    return { ...student, rosterPosition: index + 1 };
-  });
+  const labels = rosterLabels(students);
   const candidates = original.kind === "AMBIGUOUS"
-    ? roster.filter(({ aiAlias }) => original.candidateAliases.includes(aiAlias)) : roster;
+    ? students.filter(({ aiAlias }) => original.candidateAliases.includes(aiAlias)) : students;
   return (
     <label>
       {original.kind === "UNKNOWN" ? "Choose existing student" : "Choose student"}
@@ -181,9 +178,9 @@ function StudentSelector({ original, resolved, students, onPatch }: {
         onPatch({ studentRef: studentAlias ? { kind: "RESOLVED", studentAlias } : original });
       }}>
         <option value="">Select a student</option>
-        {candidates.map(({ id, aiAlias, displayLabel, rosterPosition }) => (
+        {candidates.map(({ id, aiAlias }) => (
           <option key={id} value={aiAlias}>
-            {labelCounts.get(displayLabel) === 1 ? displayLabel : `${displayLabel} (roster #${rosterPosition})`}
+            {labels.get(id)}
           </option>
         ))}
       </select>

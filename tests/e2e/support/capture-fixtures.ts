@@ -10,6 +10,7 @@ export const notes = {
   ambiguousIssue: "An làm sai dấu, chưa rõ ở bước nào.",
   followUp: "An nhớ đổi dấu ở bước đầu nhưng vẫn sai ở bước cuối.",
   retry: "An cần ghi lại bài kiểm tra về dấu.",
+  reassessmentOutcome: "An tự đổi dấu đúng. Bình làm đúng sau khi được nhắc.",
 };
 
 const draft = (items: ProposalDraftItemV1[]): ProposalDraftV1 => ({ schemaVersion: "1", items });
@@ -108,6 +109,23 @@ export function captureFixtures(signal: AbortSignal) {
         retries.delete(input.rawNoteId);
         return draft([{ key: "retry", type: "CREATE_EVIDENCE", studentRef: resolved("An"), observationText: notes.retry }]);
       }
+      case notes.reassessmentOutcome:
+        return draft(["An", "Bình"].flatMap((name): ProposalDraftItemV1[] => {
+          const student = input.students.find(({ displayLabel }) => displayLabel === name);
+          const issue = input.studentIssues.find(({ studentId }) => studentId === student?.studentId);
+          if (!issue) throw new Error(`Missing reassessment target for ${name}`);
+          const studentIssueRef = { kind: "EXISTING", studentIssueId: issue.studentIssueId } as const;
+          return [
+            {
+              key: `${name}-outcome`, type: "CREATE_EVIDENCE", studentRef: resolved(name), studentIssueRef,
+              observationText: name === "An" ? "An independently changed the sign correctly." : "Bình corrected the sign after a prompt.",
+            },
+            {
+              key: `${name}-transition`, type: "TRANSITION_STUDENT_ISSUE", studentIssueRef, expectedVersion: issue.version,
+              toState: name === "An" ? "RESOLVED_FOR_NOW" : "IMPROVING",
+            },
+          ];
+        }));
       default:
         throw new Error("No structuring fixture for this note");
     }

@@ -6,7 +6,7 @@ test.describe("class roster", () => {
   test("a teacher manages a class and its active roster", async ({ baseURL, context, page }) => {
     if (!baseURL) throw new Error("Set the Playwright baseURL.");
     await context.addCookies([{ name: "tutorloop-e2e", value: "teacher", url: baseURL }]);
-    await page.goto("/");
+    await page.goto("/classes");
     await expect(page.getByRole("heading", { name: "Classes", exact: true })).toBeVisible();
     await expect(page).toHaveURL("/classes");
 

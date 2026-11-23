@@ -214,6 +214,27 @@ label {
 .capture-status { margin-top: 0.5rem; }
 .capture-status p, .capture-status a { font-weight: 650; }
 
+.class-selector { width: min(100%, 20rem); }
+.target-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+}
+.target-options legend { font-weight: 650; }
+.target-options label { display: flex; width: auto; align-items: center; min-height: 2.75rem; }
+.target-options input { width: 1rem; min-height: 1rem; margin-inline: 0 0.2rem; accent-color: var(--accent); }
+.reassessment-row { min-width: 0; border-top: 1px solid var(--border); padding-block: 0.85rem; overflow-wrap: anywhere; }
+.reassessment-row:last-child { padding-bottom: 0; }
+.reassessment-row h3 { margin: 0; font-size: 1.08rem; }
+.reassessment-issues, .reassessment-targets { margin: 0; padding-left: 1.25rem; }
+.outcome-form { display: grid; gap: 0.65rem; width: 100%; padding-top: 0.9rem; border-top: 1px solid var(--border); }
+
 .review-back { margin-bottom: 1rem; }
 .review-grid {
   display: grid;

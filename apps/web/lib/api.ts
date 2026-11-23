@@ -6,15 +6,21 @@ import {
   classDtoSchema,
   classListDtoSchema,
   createRawNoteResponseSchema,
+  interventionDtoSchema,
   meDtoSchema,
   proposalRunDetailDtoSchema,
   rawNoteDetailDtoSchema,
+  reassessmentDtoSchema,
+  reassessmentDueQueueDtoSchema,
   studentDtoSchema,
   studentOverviewDtoSchema,
   type AddStudentInput,
   type ApiErrorCode,
   type CreateClassInput,
+  type CreateInterventionInput,
   type CreateRawNoteInput,
+  type CreateReassessmentInput,
+  type CreateReassessmentOutcomeNoteInput,
   type ProposalDecisionBatchInput,
   type ReprocessRawNoteInput,
   type UpdateStudentInput,
@@ -143,4 +149,29 @@ export function getCanonicalIssue(classId: string, issueId: string, signal?: Abo
 
 export function getStudentOverview(classId: string, studentId: string, signal?: AbortSignal) {
   return read(`${studentPath(classId, studentId)}/overview`, studentOverviewDtoSchema, { signal });
+}
+
+function reassessmentPath(classId: string, reassessmentId: string) {
+  return `${classPath(classId)}/reassessments/${encodeURIComponent(reassessmentId)}`;
+}
+
+export function recordIntervention(classId: string, input: CreateInterventionInput) {
+  return read(`${classPath(classId)}/interventions`, interventionDtoSchema, json("POST", input));
+}
+
+export function scheduleReassessment(classId: string, input: CreateReassessmentInput) {
+  return read(`${classPath(classId)}/reassessments`, reassessmentDtoSchema, json("POST", input));
+}
+
+export function getReassessmentDueQueue(classId: string, signal?: AbortSignal) {
+  return read(`${classPath(classId)}/reassessments/due`, reassessmentDueQueueDtoSchema, { signal });
+}
+
+export function markReassessmentPerformed(classId: string, reassessmentId: string, expectedVersion: number) {
+  return read(`${reassessmentPath(classId, reassessmentId)}/mark-performed`, reassessmentDtoSchema,
+    json("POST", { expectedVersion }));
+}
+
+export function createReassessmentOutcomeNote(classId: string, reassessmentId: string, input: CreateReassessmentOutcomeNoteInput) {
+  return read(`${reassessmentPath(classId, reassessmentId)}/outcome-note`, createRawNoteResponseSchema, json("POST", input));
 }
