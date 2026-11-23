@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { AppShell } from "../../../../../components/app-shell";
 import { proposalPayload } from "../../../../../components/proposal-card";
 import { ProposalReview } from "../../../../../components/proposal-review";
+import { ProductViewEvent } from "../../../../../components/product-view-event";
 import { getCanonicalIssue, getClassDetail, getProposalRun, listCanonicalIssues } from "../../../../../lib/api";
 import { useWorkspaceError } from "../../../../../lib/session";
 
@@ -51,6 +52,7 @@ function ReviewWorkspace({ classId, runId }: { classId: string; runId: string })
 
   return (
     <>
+      {review && <ProductViewEvent eventName="proposal_review_opened" classId={classId} entityId={runId} />}
       <nav className="review-back" aria-label="Class navigation">
         <Link href={`/classes/${encodeURIComponent(classId)}`}>Back to class</Link>
       </nav>

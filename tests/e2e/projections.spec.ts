@@ -12,6 +12,12 @@ async function body<T>(response: APIResponse): Promise<T> {
 test("projection: reviewed capture connects class aggregate, student history, and exact source note", async ({ baseURL, page }) => {
   test.setTimeout(60_000);
   if (!baseURL) throw new Error("Set the Playwright baseURL.");
+  const viewEvents: Array<Record<string, unknown>> = [];
+  // Analytics failures must never prevent the educational workflow.
+  await page.route("**/api/v1/product-events", async (route) => {
+    viewEvents.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({ status: 503, contentType: "application/json", body: "{}" });
+  });
   await page.context().addCookies([{ name: "tutorloop-e2e", value: `capture-${randomUUID()}`, url: baseURL }]);
   const classroom = await body<{ id: string }>(await page.request.post("/api/v1/classes", {
     data: { name: "Projection class", timezone: "Asia/Bangkok", clientRequestId: randomUUID() },
@@ -23,6 +29,9 @@ test("projection: reviewed capture connects class aggregate, student history, an
       data: { displayLabel, clientRequestId: randomUUID() },
     })));
   }
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Due", exact: true })).toBeVisible();
+  await expect.poll(() => viewEvents.filter(({ eventName }) => eventName === "reassessment_due_opened").length).toBe(1);
   await page.goto(`/classes/${classroom.id}`);
   await page.getByLabel("What did you notice?").fill(notes.projection);
   await page.getByLabel(/Observed at/).fill("2026-11-20T14:00");
@@ -69,6 +78,14 @@ test("projection: reviewed capture connects class aggregate, student history, an
   const evidence = page.getByRole("listitem").filter({ hasText: "An sai dấu khi chuyển vế." });
   await evidence.getByRole("button", { name: "Show source note" }).click();
   await expect(evidence.getByText(notes.projection)).toBeVisible();
+  await expect.poll(() => [...new Set(viewEvents.map(({ eventName }) => eventName))].sort()).toEqual([
+    "class_issue_view_opened", "history_opened", "proposal_review_opened", "reassessment_due_opened", "student_view_opened",
+  ]);
+  for (const event of viewEvents) {
+    expect(Object.keys(event).sort()).toEqual(event.entityId ? ["classId", "entityId", "eventName"] : ["classId", "eventName"]);
+    expect(event.classId).toBe(classroom.id);
+  }
+  expect(JSON.stringify(viewEvents)).not.toContain(notes.projection);
   const timeline = page.getByRole("region", { name: "Timeline" });
   await expect(timeline.getByRole("listitem")).toHaveText([/Evidence: An sai dấu/, /Teacher → Improving.*Teacher follow-up/]);
   await expect(page.getByText("Rejected fixture observation")).toHaveCount(0);

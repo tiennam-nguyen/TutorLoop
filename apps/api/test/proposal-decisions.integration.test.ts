@@ -300,6 +300,7 @@ test("rejected prerequisite rolls back the whole submitted batch", async () => {
   expect(response.statusCode, response.body).toBe(422);
   expect(response.json().error.code).toBe("PROPOSAL_DEPENDENCY_UNSATISFIED");
   expect(await readEvidence(classId)).toEqual([]);
+  expect(await db.selectFrom("product_events").select("id").where("class_id", "=", classId).execute()).toEqual([]);
   expect((await app.inject(run.url)).json()).toMatchObject({
     status: "READY", items: Array.from({ length: 3 }, () => ({ status: "PENDING" })),
   });
@@ -598,4 +599,5 @@ test("requires authentication and Class ownership on review and direct edits", a
   } finally {
     await anonymous.close();
   }
+  expect(await db.selectFrom("product_events").select("id").where("class_id", "in", [foreignClass, owned]).execute()).toEqual([]);
 });

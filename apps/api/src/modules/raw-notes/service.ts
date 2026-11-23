@@ -4,6 +4,7 @@ import {
   type VoidRawNoteInput,
 } from "@tutorloop/contracts";
 import type { Database } from "@tutorloop/db/database";
+import { insertProductEvent } from "@tutorloop/db/repositories/product-events";
 import {
   findInitialStructureJob, findLatestStructureAttempt, insertInitialStructureJob,
 } from "@tutorloop/db/repositories/jobs";
@@ -89,6 +90,8 @@ export async function captureRawNote(
     });
     if (inserted) {
       const job = await insertInitialStructureJob(trx, inserted.id, classroom.id);
+      await insertProductEvent(trx, { class_id: classroom.id, actor_user_id: principal.userId,
+        event_name: "raw_note_created", entity_id: inserted.id });
       return { rawNote: toRawNoteDto(inserted), processing: { status: "QUEUED", jobId: job.id } };
     }
 

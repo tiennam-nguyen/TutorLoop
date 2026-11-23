@@ -41,11 +41,11 @@ export function registerApiErrorHandlers(app: FastifyInstance): void {
     ) {
       failure = new ApiError("VALIDATION_ERROR", "Invalid request.");
     } else {
-      request.log.error("API request failed");
       failure = new ApiError("INTERNAL_ERROR", "An internal error occurred.");
     }
 
     const { code, message, details } = failure;
+    if (request.privacyLog) request.privacyLog.errorCode = code;
     const body: ApiErrorBody = {
       error: { code, message, ...(details === undefined ? {} : { details }) },
     };

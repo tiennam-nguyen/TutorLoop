@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { AppShell } from "../../../../../components/app-shell";
 import { CanonicalIssueMaintenance } from "../../../../../components/canonical-issue-maintenance";
 import { EvidenceEntry } from "../../../../../components/evidence-entry";
+import { ProductViewEvent } from "../../../../../components/product-view-event";
 import { IssueActivityForm } from "../../../../../components/reassessment-form";
 import { getCanonicalIssue, getClassDetail, getStudentOverview, listCanonicalIssues } from "../../../../../lib/api";
 import { formatObservedTime } from "../../../../../lib/observed-time";
@@ -47,6 +48,7 @@ function ClassIssue({ classId, issueId }: { classId: string; issueId: string }) 
     return () => controller.abort();
   }, [classId, issueId, attempt, workspaceError]);
   return <>
+    {data && <ProductViewEvent eventName="class_issue_view_opened" classId={classId} entityId={issueId} />}
     <nav className="review-back" aria-label="Class navigation">
       <Link href={`/classes/${encodeURIComponent(classId)}/issues`}>Back to class issues</Link>
     </nav>

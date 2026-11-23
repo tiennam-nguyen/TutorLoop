@@ -2,7 +2,7 @@
 
 import type { EvidenceDto } from "@tutorloop/contracts";
 import { useState } from "react";
-import { getRawNote } from "../lib/api";
+import { getRawNote, recordProductView } from "../lib/api";
 import { formatObservedTime } from "../lib/observed-time";
 import { useWorkspaceError } from "../lib/session";
 
@@ -19,6 +19,7 @@ export function EvidenceEntry({ evidence, timeZone }: { evidence: EvidenceDto; t
     try {
       const detail = await getRawNote(evidence.classId, evidence.rawNoteId);
       setSource(detail.rawNote.body);
+      recordProductView({ eventName: "history_opened", classId: evidence.classId, entityId: evidence.id });
     } catch (failure) {
       setError(workspaceError(failure));
     } finally {

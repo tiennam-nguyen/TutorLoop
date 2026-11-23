@@ -5,6 +5,8 @@ import {
   type UpdateStudentIssueManifestationInput, type UpdateStudentIssueStateInput,
 } from "@tutorloop/contracts";
 import type { Database } from "@tutorloop/db/database";
+import { insertProductEvent } from "@tutorloop/db/repositories/product-events";
+import { serverProductEvents } from "@tutorloop/observability/product-events";
 import { insertProposalEvidence } from "@tutorloop/db/repositories/evidence";
 import {
   appendStudentIssueTransition, auditManifestationEdit, findCanonicalIssue, insertCanonicalIssue, insertStudentIssue,
@@ -369,6 +371,8 @@ export function applyProposalDecisions(
         decided_by_user_id: principal.userId, decided_at: now, result_entity_type: result?.type ?? null,
         result_entity_id: result?.id ?? null,
       });
+      await insertProductEvent(trx, { class_id: run.class_id, actor_user_id: principal.userId,
+        event_name: serverProductEvents[decision.decision], entity_id: id });
     }
     const updated = await updateProposalReviewStatus(trx, run.class_id, run.id, now);
     return toRunDetail(trx, updated, note, await listProposalItems(trx, run.class_id, run.id));

@@ -3,6 +3,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "vitest run --config ../../vitest.workspace.ts --project unit"
+    "test": "vitest run --config ../../vitest.workspace.ts --project unit",
+    "typecheck": "tsc --noEmit"
+  },
+  "exports": {
+    "./logger": "./src/logger.ts",
+    "./product-events": "./src/product-events.ts"
+  },
+  "dependencies": {
+    "@tutorloop/contracts": "workspace:*"
   }
 }

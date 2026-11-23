@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { AppShell } from "../../../../../components/app-shell";
 import { StudentIssueList } from "../../../../../components/student-issue-list";
 import { StudentTimeline } from "../../../../../components/student-timeline";
+import { ProductViewEvent } from "../../../../../components/product-view-event";
 import { getClassDetail, getStudentOverview } from "../../../../../lib/api";
 import { useWorkspaceError } from "../../../../../lib/session";
 
@@ -32,6 +33,8 @@ function StudentView({ classId, studentId }: { classId: string; studentId: strin
     <div className="page-heading"><div><h1>{data?.overview.student.displayLabel ?? "Student"}</h1>
       {data && <p className="muted">{data.classroom.name}</p>}</div></div>
     {data ? <div className="student-view">
+      <ProductViewEvent eventName="student_view_opened" classId={classId} entityId={studentId} />
+      <ProductViewEvent eventName="history_opened" classId={classId} entityId={studentId} hash="#timeline" />
       <StudentIssueList classId={classId} title="Active issues" issues={data.overview.activeStudentIssues} />
       <StudentTimeline overview={data.overview} timeZone={data.classroom.timezone} />
       <StudentIssueList classId={classId} title="Resolved for now" issues={data.overview.resolvedStudentIssues} />

@@ -19,6 +19,7 @@ export function createBetterAuth(
       google: { clientId: config.googleClientId, clientSecret: config.googleClientSecret },
     },
     telemetry: { enabled: false },
+    logger: { disabled: true },
   });
 }
 

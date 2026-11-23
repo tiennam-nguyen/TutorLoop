@@ -16,5 +16,6 @@ export async function requirePrincipal(request: FastifyRequest): Promise<AuthPri
   if (!principal) {
     throw new ApiError("UNAUTHENTICATED", "Authentication is required.");
   }
+  if (request.privacyLog) request.privacyLog.userId = principal.userId;
   return principal;
 }

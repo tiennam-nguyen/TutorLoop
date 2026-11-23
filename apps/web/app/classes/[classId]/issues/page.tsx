@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppShell } from "../../../../components/app-shell";
 import { IssueTable } from "../../../../components/issue-table";
+import { ProductViewEvent } from "../../../../components/product-view-event";
 import { getClassDetail, listCanonicalIssues } from "../../../../lib/api";
 import { useWorkspaceError } from "../../../../lib/session";
 
@@ -27,6 +28,7 @@ function ClassIssues({ classId }: { classId: string }) {
     return () => controller.abort();
   }, [classId, attempt, workspaceError]);
   return <>
+    {data && <ProductViewEvent eventName="class_issue_view_opened" classId={classId} />}
     <nav className="review-back" aria-label="Class navigation"><Link href={`/classes/${encodeURIComponent(classId)}`}>Back to class</Link></nav>
     <div className="page-heading"><div><h1>Class issues</h1>{data && <p className="muted">{data.classroom.name}</p>}</div></div>
     {data ? <IssueTable classId={classId} issues={data.issues} /> : error ? <>

@@ -1,8 +1,12 @@
 import type { Database } from "@tutorloop/db/database";
+import { randomUUID } from "node:crypto";
+import type { LogSink } from "@tutorloop/observability/logger";
 import fastify, { type FastifyInstance } from "fastify";
 import type { Kysely } from "kysely";
 import { requirePrincipal, type AuthVerifier } from "./auth/principal.ts";
 import { registerApiErrorHandlers } from "./common/errors.ts";
+import { registerPrivacyLogging } from "./common/logging.ts";
+import { registerProductEventRoutes } from "./modules/product-events/routes.ts";
 import { registerClassRoutes } from "./modules/classes/routes.ts";
 import { registerIssueRoutes } from "./modules/issues/routes.ts";
 import { registerInterventionRoutes } from "./modules/interventions/routes.ts";
@@ -15,12 +19,14 @@ export type CreateAppOptions = {
   authVerifier: AuthVerifier;
   db?: Kysely<Database>;
   now?: () => Date;
+  logSink?: LogSink;
 };
 
 export async function createApp(
-  { authVerifier, db, now = () => new Date() }: CreateAppOptions,
+  { authVerifier, db, now = () => new Date(), logSink }: CreateAppOptions,
 ): Promise<FastifyInstance> {
-  const app = fastify();
+  const app = fastify({ logger: false, requestIdHeader: false, genReqId: () => randomUUID() });
+  registerPrivacyLogging(app, logSink);
   app.decorate("authVerifier", authVerifier);
   registerApiErrorHandlers(app);
 
@@ -32,6 +38,7 @@ export async function createApp(
   });
 
   if (db) {
+    registerProductEventRoutes(app, db);
     registerClassRoutes(app, db);
     registerIssueRoutes(app, db);
     registerRawNoteRoutes(app, db);

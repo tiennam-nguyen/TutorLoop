@@ -8,6 +8,7 @@ import { formatObservedTime } from "../lib/observed-time";
 import { rosterLabels } from "../lib/roster-labels";
 import { useWorkspaceError } from "../lib/session";
 import { OutcomeNoteForm } from "./outcome-note-form";
+import { ProductViewEvent } from "./product-view-event";
 
 type QueueEntry = ReassessmentDueQueueDto["due"][number] | ReassessmentDueQueueDto["needsResults"][number];
 type QueueTarget = QueueEntry["targets"][number];
@@ -144,6 +145,7 @@ export function DueQueue({ classroom, onSaved }: {
   }
 
   return <>
+    {queue && <ProductViewEvent eventName="reassessment_due_opened" classId={classId} />}
     {error && <div className="panel">
       <p role="alert">{error}</p>
       <button type="button" disabled={busy} onClick={() => {

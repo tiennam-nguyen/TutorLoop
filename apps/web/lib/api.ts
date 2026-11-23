@@ -27,7 +27,17 @@ import {
   type UpdateStudentInput,
   type UpdateCanonicalIssueInput,
   type MergeCanonicalIssueInput,
+  recordProductEventInputSchema,
+  type RecordProductEventInput,
 } from "@tutorloop/contracts";
+
+export function recordProductView(input: RecordProductEventInput): void {
+  const parsed = recordProductEventInputSchema.safeParse(input);
+  if (!parsed.success) return;
+  void request("/product-events", { ...json("POST", parsed.data), keepalive: true }).catch(() => {
+    // Best-effort instrumentation must not interrupt or retry educational actions.
+  });
+}
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number, readonly code?: ApiErrorCode) {
