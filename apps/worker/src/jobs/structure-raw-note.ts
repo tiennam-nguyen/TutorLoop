@@ -15,7 +15,7 @@ import {
 import { findRawNote } from "@tutorloop/db/repositories/raw-notes";
 import { listClassCanonicalIssues } from "@tutorloop/db/repositories/issues";
 import { listActiveStudents } from "@tutorloop/db/repositories/students";
-import { type Kysely, sql, type Transaction } from "kysely";
+import { type Expression, type Kysely, sql, type Transaction } from "kysely";
 
 export type StructureJobDeps = {
   db: Kysely<Database>;
@@ -45,6 +45,7 @@ export function withCurrentStructureClaim<T>(
 
 async function loadContext(
   db: Kysely<Database>, note: NonNullable<Awaited<ReturnType<typeof findRawNote>>>,
+  cutoff?: Expression<Date>,
 ): Promise<StructureNoteInput> {
   const classId = note.class_id;
   const outcome = note.note_type === "REASSESSMENT_OUTCOME";
@@ -63,11 +64,16 @@ async function loadContext(
       .where("class_id", "=", classId).where("reassessment_id", "=", reassessmentId)
       .whereRef("student_issue_id", "=", "student_issues.id"),
   ));
-  const [students, studentIssues] = await Promise.all([
+  const [students, studentIssues, allCanonical, olderIssueText] = await Promise.all([
     listActiveStudents(db, classId),
-    candidateQuery.execute(),
+    candidateQuery.select(afterLabelEdit("student_issues.created_at", cutoff)).execute(),
+    listClassCanonicalIssues(db, classId),
+    cutoff ? listOlderIssueTextSources(db, classId, cutoff) : [],
   ]);
-  const allCanonical = await listClassCanonicalIssues(db, classId);
+  const olderCanonical = new Set(olderIssueText.filter(({ item_type }) => item_type === "CREATE_CANONICAL_ISSUE")
+    .map(({ result_entity_id }) => result_entity_id));
+  const olderManifestations = new Set(olderIssueText.filter(({ item_type }) => item_type !== "CREATE_CANONICAL_ISSUE")
+    .map(({ result_entity_id }) => result_entity_id));
   const byId = new Map(allCanonical.map((issue) => [issue.id, issue]));
   function rootId(id: string) {
     const visited = new Set<string>();
@@ -84,10 +90,11 @@ async function loadContext(
   const canonicalIds = [...new Set(studentIssues.map(({ canonical_issue_id }) => rootId(canonical_issue_id)))];
   const [canonicalIssues, history] = await Promise.all([
     db.selectFrom("canonical_issues").select(["id", "label", "description", "version"])
+      .select(afterLabelEdit("canonical_issues.created_at", cutoff))
       .where("class_id", "=", classId).where("merged_into_id", "is", null).where("archived_at", "is", null)
       .$if(outcome, (query) => query.where("id", "=", sql<string>`any(${canonicalIds}::uuid[])`))
       .orderBy("id").execute(),
-    outcome ? listRecentIssueEvidence(db, classId, studentIssues.map(({ id }) => id)) : undefined,
+    outcome ? listRecentIssueEvidence(db, classId, studentIssues.map(({ id }) => id), cutoff) : undefined,
   ]);
   return {
     task: outcome ? "RECONCILE_REASSESSMENT_OUTCOME" : "STRUCTURE_OBSERVATION_NOTE",
@@ -98,12 +105,17 @@ async function loadContext(
     students: students.map((student) => ({
       studentId: student.id, displayLabel: student.display_label, aiAlias: student.ai_alias,
     })),
-    canonicalIssues: canonicalIssues.map((issue) => ({
-      canonicalIssueId: issue.id, label: issue.label, description: issue.description, version: issue.version,
-    })),
+    canonicalIssues: canonicalIssues.map((issue) => {
+      const sendText = issue.created_after_label_edit && !olderCanonical.has(issue.id);
+      return {
+        canonicalIssueId: issue.id, label: sendText ? issue.label : "[PRIVATE]",
+        description: sendText ? issue.description : null, version: issue.version,
+      };
+    }),
     studentIssues: studentIssues.map((issue) => ({
       studentIssueId: issue.id, studentId: issue.student_id, canonicalIssueId: rootId(issue.canonical_issue_id),
-      manifestation: issue.manifestation, state: issue.state, version: issue.version,
+      manifestation: issue.created_after_label_edit && !olderManifestations.has(issue.id) ? issue.manifestation : null,
+      state: issue.state, version: issue.version,
     })),
     ...(history?.length ? { evidenceHistory: history.map((event) => ({
       studentIssueId: event.student_issue_id, observationText: event.observation_text, learningContext: event.learning_context,
@@ -111,13 +123,45 @@ async function loadContext(
   };
 }
 
-async function loadPrivateLabels(db: Kysely<Database>, classId: string) {
-  const [classroom, archived] = await Promise.all([
-    db.selectFrom("classes").select("name").where("id", "=", classId).executeTakeFirstOrThrow(),
-    db.selectFrom("students").select("display_label").where("class_id", "=", classId)
-      .where("archived_at", "is not", null).execute(),
-  ]);
-  return [classroom.name, ...archived.map(({ display_label }) => display_label)];
+function afterLabelEdit(column: "student_issues.created_at" | "canonical_issues.created_at", cutoff?: Expression<Date>) {
+  return (cutoff ? sql<boolean>`${sql.ref(column)} > ${cutoff}` : sql<boolean>`true`).as("created_after_label_edit");
+}
+
+function listOlderIssueTextSources(db: Kysely<Database>, classId: string, cutoff: Expression<Date>) {
+  // Approval can write text long after its source was captured. State changes and merges carry no issue text.
+  return db.selectFrom("proposal_items as item")
+    .innerJoin("proposal_runs as run", (join) => join
+      .onRef("run.id", "=", "item.proposal_run_id").onRef("run.class_id", "=", "item.class_id"))
+    .innerJoin("raw_notes as source", (join) => join
+      .onRef("source.id", "=", "run.raw_note_id").onRef("source.class_id", "=", "run.class_id"))
+    .select(["item.item_type", "item.result_entity_id"])
+    .where("item.class_id", "=", classId).where("item.status", "=", "APPROVED")
+    .where("item.item_type", "in", ["CREATE_CANONICAL_ISSUE", "CREATE_STUDENT_ISSUE", "UPDATE_MANIFESTATION"])
+    .where("item.result_entity_id", "is not", null).where("source.created_at", "<=", cutoff)
+    .execute();
+}
+
+async function loadProviderPrivacy(db: Kysely<Database>, classId: string, rawNoteId: string) {
+  // Versions signal possible name edits. Include archived Students and keep microseconds out of JS Dates.
+  const source = await db.with("private_label_edit", (cte) => cte.selectFrom("classes").select("name")
+    .where("id", "=", classId)
+    .select(sql<Date | null>`greatest(
+      case when classes.version > 1 then classes.updated_at end,
+      (select max(students.updated_at) from students where students.class_id = classes.id and students.version > 1)
+    )`.as("cutoff")),
+  ).selectFrom("private_label_edit").crossJoin("raw_notes")
+    .select("name").select(sql<string | null>`private_label_edit.cutoff::text`.as("cutoff"))
+    .select(sql<boolean>`coalesce(raw_notes.created_at > private_label_edit.cutoff, true)`.as("can_route"))
+    .where("raw_notes.class_id", "=", classId).where("raw_notes.id", "=", rawNoteId)
+    .executeTakeFirstOrThrow();
+  if (!source.can_route) throw new StructureJobError("AI_PROCESSING_FAILED");
+
+  const archived = await db.selectFrom("students").select("display_label").where("class_id", "=", classId)
+    .where("archived_at", "is not", null).execute();
+  return {
+    privateLabels: [source.name, ...archived.map(({ display_label }) => display_label)],
+    cutoff: source.cutoff === null ? undefined : sql<Date>`${source.cutoff}::timestamptz`,
+  };
 }
 
 async function generateDraft(
@@ -175,12 +219,12 @@ export async function processStructureRawNoteJob(job: StructureJobClaim, deps: S
 
   if (preparation.kind === "processing") {
     const { note, run } = preparation;
-    // Read the roster, private labels and history cutoff from one snapshot before calling the provider.
-    const [input, privateLabels] = await deps.db.transaction().setIsolationLevel("repeatable read").setAccessMode("read only")
-      .execute((trx) => Promise.all([
-        loadContext(trx, note),
-        deps.route ? loadPrivateLabels(trx, note.class_id) : undefined,
-      ]));
+    // Read the roster, private labels and eligible context from one snapshot before calling the provider.
+    const { input, privateLabels } = await deps.db.transaction().setIsolationLevel("repeatable read").setAccessMode("read only")
+      .execute(async (trx) => {
+        const privacy = deps.route ? await loadProviderPrivacy(trx, note.class_id, note.id) : undefined;
+        return { input: await loadContext(trx, note, privacy?.cutoff), privateLabels: privacy?.privateLabels };
+      });
     const output = await generateDraft(job, deps, input, run, privateLabels);
     const draft = proposalDraftV1Schema.safeParse(output);
     const items = draft.success ? prepareDraftForPersistence(draft.data, input) : undefined;

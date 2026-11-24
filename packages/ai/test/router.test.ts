@@ -144,6 +144,43 @@ test("accepts an unknown student as a valid unresolved draft", async () => {
   expect(result.attempts).toEqual([expect.objectContaining({ status: "SUCCESS", errorCode: null })]);
 });
 
+test.each(["UPDATE_MANIFESTATION", "TRANSITION_STUDENT_ISSUE"] as const)(
+  "rejects %s with a version other than the supplied snapshot before recording success",
+  async (type) => {
+    const item = {
+      key: "change", type, studentIssueRef: { kind: "EXISTING", studentIssueId: "SI_001" },
+      ...(type === "UPDATE_MANIFESTATION" ? { manifestation: "Signs" } : { toState: "IMPROVING" }),
+    };
+    const wrongVersion = { schemaVersion: "1", items: [{ ...item, expectedVersion: 3 }] };
+    const matchingVersion = { schemaVersion: "1", items: [{ ...item, expectedVersion: 2 }] };
+    expect(proposalDraftV1Schema.safeParse(wrongVersion).success).toBe(true);
+    const { calls, route } = setup(wrongVersion, wrongVersion, matchingVersion);
+    const result = await route();
+    expect(calls.map(({ model }) => model)).toEqual([gemini.model, gemini.model, groq.model]);
+    expect(result.attempts.map(({ status, errorCode }) => [status, errorCode])).toEqual([
+      ["TRANSIENT_FAILURE", "INVALID_STRUCTURED_OUTPUT"],
+      ["TRANSIENT_FAILURE", "INVALID_STRUCTURED_OUTPUT"],
+      ["SUCCESS", null],
+    ]);
+    expect(result.draft.items).toEqual([{
+      ...item, expectedVersion: 2, studentIssueRef: { kind: "EXISTING", studentIssueId: "si-raw-id" },
+    }]);
+  },
+);
+
+test("accepts a versioned change that depends on a Student Issue in the same draft", async () => {
+  const draft = { schemaVersion: "1", items: [
+    { key: "create", type: "CREATE_STUDENT_ISSUE", studentRef: evidenceItem.studentRef,
+      canonicalIssueRef: { kind: "EXISTING", canonicalIssueId: "CI_001" } },
+    { key: "update", type: "UPDATE_MANIFESTATION", manifestation: "Sign errors", expectedVersion: 1,
+      studentIssueRef: { kind: "PROPOSED", proposalKey: "create" } },
+  ] };
+  const { route } = setup(draft);
+  const result = await route();
+  expect(result.attempts).toEqual([expect.objectContaining({ status: "SUCCESS", errorCode: null })]);
+  expect(result.draft.items[1]).toEqual(draft.items[1]);
+});
+
 test("accepts valid ambiguity without retry and restores local issue IDs", async () => {
   const draft = { schemaVersion: "1", items: [{
     key: "e", type: "CREATE_STUDENT_ISSUE",

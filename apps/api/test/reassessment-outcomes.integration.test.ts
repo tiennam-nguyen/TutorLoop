@@ -9,7 +9,7 @@ import { buildCanonicalIssue, buildClass, buildStudent } from "@tutorloop/testki
 import { FakeNoteStructurer } from "@tutorloop/testkit/fake-note-structurer";
 import { startPostgres } from "@tutorloop/testkit/postgres";
 import { sql } from "kysely";
-import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "vitest";
 import { AI_MODEL_REGISTRY } from "../../../packages/ai/src/registry.ts";
 import { routeStructuredNote } from "../../../packages/ai/src/router.ts";
 import { runNextJob } from "../../worker/src/worker.ts";
@@ -45,7 +45,6 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  vi.useRealTimers();
   await app?.close();
 });
 afterAll(async () => {
@@ -277,20 +276,26 @@ test("sends only current Class aliases and targeted issue context with redacted,
   }
 });
 
-test("omits history sourced before or at a roster edit and includes redacted history recorded after it", async () => {
-  vi.setSystemTime(new Date("2026-11-23T07:00:00Z"));
-  const formerLabel = "Former Synthetic Label";
+test.each(["Student", "Class"] as const)("omits history sourced before or at a %s edit", async (kind) => {
+  const formerLabel = kind === "Student" ? "Former Synthetic Label" : classroom.name;
   const newLabel = "Replacement Display";
-  const an = await issue(await student(formerLabel, "STU_001"));
+  const an = await issue(await student(kind === "Student" ? formerLabel : "An", "STU_001"));
   const path = await schedule([an.id]);
   const studentPath = `${classPath()}/students/${an.learner.id}`;
+  const redactedLabel = kind === "Student" ? "STU_001" : "[PRIVATE]";
 
-  async function captureObservation(body: string, time: string) {
+  async function captureObservation(body: string, time: string, atEdit = false) {
     const response = await post(`${classPath()}/raw-notes`, {
       body, observedAt: time, noteType: "OBSERVATION", clientRequestId: randomUUID(),
     });
     expect(response.statusCode, response.body).toBe(201);
-    const { processing } = createRawNoteResponseSchema.parse(response.json());
+    const { processing, rawNote } = createRawNoteResponseSchema.parse(response.json());
+    if (atEdit) {
+      const editTime = kind === "Student"
+        ? db.selectFrom("students").select("updated_at").where("id", "=", an.learner.id)
+        : db.selectFrom("classes").select("updated_at").where("id", "=", classroom.id);
+      await db.updateTable("raw_notes").set({ created_at: editTime }).where("id", "=", rawNote.id).execute();
+    }
     const run = await structure(processing.jobId, [evidence(an, "note-evidence", body)]);
     return async () => {
       const decision = await post(`${run.url}/decisions`, {
@@ -302,19 +307,17 @@ test("omits history sourced before or at a roster edit and includes redacted his
 
   const oldText = `${formerLabel} worked independently.`;
   const approveBeforeEdit = await captureObservation(oldText, observedAt);
-  vi.setSystemTime(new Date("2026-11-23T07:00:01Z"));
   const rename = await app.inject({
-    method: "PATCH", url: studentPath, payload: { expectedVersion: 1, displayLabel: newLabel },
+    method: "PATCH", url: kind === "Student" ? studentPath : classPath(),
+    payload: { expectedVersion: 1, [kind === "Student" ? "displayLabel" : "name"]: newLabel },
   });
   expect(rename.statusCode, rename.body).toBe(200);
-  expect(rename.json()).toMatchObject({ displayLabel: newLabel, version: 2 });
   await approveBeforeEdit();
-  const approveAtEdit = await captureObservation(`${formerLabel} passed the second quiz.`, observedAt);
+  const approveAtEdit = await captureObservation(`${formerLabel} passed the second quiz.`, observedAt, true);
   await approveAtEdit();
   const firstOutcome = await capture(path, { ...noteInput(), body: `${newLabel} reviewed quiz results.` });
   const noHistory = await providerPayload(firstOutcome.processing.jobId);
 
-  vi.setSystemTime(new Date("2026-11-23T07:00:02Z"));
   const safeText = `${newLabel} explained the denominator.`;
   const approveAfterEdit = await captureObservation(safeText, olderTime);
   await approveAfterEdit();
@@ -324,8 +327,8 @@ test("omits history sourced before or at a roster edit and includes redacted his
   expect(JSON.stringify([noHistory, payload])).not.toContain(formerLabel);
   expect(noHistory).not.toHaveProperty("evidenceHistory");
   expect(payload).toMatchObject({
-    note: "STU_001 checked one example.",
-    evidenceHistory: [{ studentIssueId: "SI_001", observationText: "STU_001 explained the denominator.", learningContext: null }],
+    note: `${redactedLabel} checked one example.`,
+    evidenceHistory: [{ studentIssueId: "SI_001", observationText: `${redactedLabel} explained the denominator.`, learningContext: null }],
   });
   const history = studentOverviewDtoSchema.parse((await app.inject(`${studentPath}/overview`)).json());
   expect(history.evidence.map(({ observationText }) => observationText)).toEqual(expect.arrayContaining([oldText, safeText]));

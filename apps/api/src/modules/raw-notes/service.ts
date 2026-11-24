@@ -4,13 +4,14 @@ import {
   type VoidRawNoteInput,
 } from "@tutorloop/contracts";
 import type { Database } from "@tutorloop/db/database";
+import { lockClassForNoteCapture } from "@tutorloop/db/repositories/classes";
 import { insertProductEvent } from "@tutorloop/db/repositories/product-events";
 import {
   findInitialStructureJob, findLatestStructureAttempt, insertInitialStructureJob,
 } from "@tutorloop/db/repositories/jobs";
 import { isPersistedProposalRun } from "@tutorloop/db/repositories/proposals";
 import {
-  findCaptureReassessment, findRawNote, findRawNoteByRequest, insertRawNote, markRawNoteVoided,
+  findRawNote, findRawNoteByRequest, insertRawNote, lockCaptureReassessment, markRawNoteVoided,
 } from "@tutorloop/db/repositories/raw-notes";
 import type { Kysely } from "kysely";
 import type { AuthPrincipal } from "../../auth/principal.ts";
@@ -79,14 +80,17 @@ export async function captureRawNote(
   return db.transaction().setIsolationLevel("read committed").execute(async (trx) => {
     const classroom = await requireOwnedClass(trx, principal, classId);
     if (reassessmentId !== null &&
-      (!idSchema.safeParse(reassessmentId).success || !(await findCaptureReassessment(trx, classroom.id, reassessmentId)))) {
+      (!idSchema.safeParse(reassessmentId).success || !(await lockCaptureReassessment(trx, classroom.id, reassessmentId)))) {
       throw new ApiError("NOT_FOUND", "Reassessment not found.");
     }
+    // Lock the outcome's Reassessment first, matching proposal approvals. Hold the Class share lock
+    // through commit so the database clock orders this capture against edits to private labels.
+    await lockClassForNoteCapture(trx, classroom.id);
 
     const inserted = await insertRawNote(trx, {
       id: randomUUID(), class_id: classroom.id, author_user_id: principal.userId, body: input.body,
       observed_at: observedAt, note_type: input.noteType, reassessment_id: reassessmentId,
-      client_request_id: input.clientRequestId, created_at: new Date(), voided_at: null, void_reason: null,
+      client_request_id: input.clientRequestId, voided_at: null, void_reason: null,
     });
     if (inserted) {
       const job = await insertInitialStructureJob(trx, inserted.id, classroom.id);

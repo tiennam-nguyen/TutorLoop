@@ -1,4 +1,4 @@
-import { type Insertable, type Kysely, sql, type Updateable } from "kysely";
+import { type Insertable, type Kysely, sql, type Transaction, type Updateable } from "kysely";
 import type { Database } from "../database.ts";
 
 type ClassInsert = Insertable<Database["classes"]> & { client_request_id: string; create_input_hash: string };
@@ -25,11 +25,19 @@ export function listActiveClasses(db: Kysely<Database>, ownerUserId: string) {
     .execute();
 }
 
+export function lockClassForNoteCapture(db: Transaction<Database>, classId: string) {
+  return db.selectFrom("classes").select("id").where("id", "=", classId).forShare().executeTakeFirstOrThrow();
+}
+
+export function lockClassForLabelEdit(db: Transaction<Database>, classId: string) {
+  return db.selectFrom("classes").select("id").where("id", "=", classId).forNoKeyUpdate().executeTakeFirstOrThrow();
+}
+
 export function updateClassAtVersion(
-  db: Kysely<Database>, ownerUserId: string, classId: string, expectedVersion: number, changes: ClassChanges,
+  db: Transaction<Database>, ownerUserId: string, classId: string, expectedVersion: number, changes: ClassChanges,
 ) {
   return db.updateTable("classes")
-    .set((eb) => ({ ...changes, updated_at: new Date(), version: eb("version", "+", 1) }))
+    .set((eb) => ({ ...changes, updated_at: sql<Date>`clock_timestamp()`, version: eb("version", "+", 1) }))
     .where("id", "=", classId)
     .where("owner_user_id", "=", ownerUserId)
     .where("version", "=", sql<number>`${expectedVersion}::bigint`)

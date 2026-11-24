@@ -58,7 +58,7 @@ export function prepareDraftForPersistence(
 
   const aliases = new Set(input.students.map(({ aiAlias }) => aiAlias));
   const canonicalIds = new Set(input.canonicalIssues.map(({ canonicalIssueId }) => canonicalIssueId));
-  const studentIssueIds = new Set(input.studentIssues.map(({ studentIssueId }) => studentIssueId));
+  const studentIssueVersions = new Map(input.studentIssues.map(({ studentIssueId, version }) => [studentIssueId, version]));
   const typesByKey = new Map(draft.items.map(({ key, type }) => [key, type]));
   const prepared: PreparedDraftItem[] = [];
 
@@ -80,8 +80,9 @@ export function prepareDraftForPersistence(
     if (issueRef?.kind === "PROPOSED") {
       if (typesByKey.get(issueRef.proposalKey) !== "CREATE_STUDENT_ISSUE") return;
       dependencyKey = issueRef.proposalKey;
-    } else if (issueRef?.kind === "EXISTING" && !studentIssueIds.has(issueRef.studentIssueId.toLowerCase())) {
-      return;
+    } else if (issueRef?.kind === "EXISTING") {
+      const version = studentIssueVersions.get(issueRef.studentIssueId.toLowerCase());
+      if (version === undefined || ("expectedVersion" in item && item.expectedVersion !== version)) return;
     }
 
     if (item.type === "MERGE_CANONICAL_ISSUE") {

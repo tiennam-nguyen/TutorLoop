@@ -2,9 +2,10 @@ import { type Expression, type Insertable, type Kysely, sql, type Transaction } 
 import type { Database } from "../database.ts";
 
 type Db = Kysely<Database>;
-type CaptureRow = Omit<Insertable<Database["raw_notes"]>, "observed_at" | "client_request_id"> & {
+type CaptureRow = Omit<Insertable<Database["raw_notes"]>, "observed_at" | "client_request_id" | "created_at"> & {
   observed_at: string;
   client_request_id: string;
+  created_at?: Date;
 };
 
 // Format in PostgreSQL to preserve microseconds and calendar fields, including ISO year 0000 (1 BC).
@@ -25,7 +26,10 @@ export function exactTimestamptz(observedAt: string) {
 }
 
 export function insertRawNote(db: Transaction<Database>, values: CaptureRow) {
-  return db.insertInto("raw_notes").values({ ...values, observed_at: exactTimestamptz(values.observed_at) })
+  return db.insertInto("raw_notes").values({
+    ...values, observed_at: exactTimestamptz(values.observed_at),
+    created_at: values.created_at ?? sql<Date>`clock_timestamp()`,
+  })
     .onConflict((conflict) => conflict.columns(["author_user_id", "client_request_id"])
       .where("client_request_id", "is not", null).doNothing())
     .returningAll().returning(observedAtUtc).executeTakeFirst();
@@ -49,9 +53,9 @@ export function lockRawNote(db: Transaction<Database>, classId: string, rawNoteI
     .where("class_id", "=", classId).where("id", "=", rawNoteId).forUpdate().executeTakeFirst();
 }
 
-export function findCaptureReassessment(db: Db, classId: string, reassessmentId: string) {
+export function lockCaptureReassessment(db: Transaction<Database>, classId: string, reassessmentId: string) {
   return db.selectFrom("reassessments").select("id")
-    .where("class_id", "=", classId).where("id", "=", reassessmentId).executeTakeFirst();
+    .where("class_id", "=", classId).where("id", "=", reassessmentId).forKeyShare().executeTakeFirst();
 }
 
 export function markRawNoteVoided(db: Db, classId: string, rawNoteId: string, reason: string | null) {

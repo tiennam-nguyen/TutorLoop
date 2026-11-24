@@ -4,8 +4,8 @@ import {
   type StudentDto, type UpdateClassInput, type UpdateStudentInput,
 } from "@tutorloop/contracts";
 import type { Database } from "@tutorloop/db/database";
-import { insertClass, listActiveClasses, updateClassAtVersion } from "@tutorloop/db/repositories/classes";
-import { findStudent, insertStudent, listActiveStudents, updateStudentAtVersion } from "@tutorloop/db/repositories/students";
+import { insertClass, listActiveClasses, lockClassForLabelEdit, updateClassAtVersion } from "@tutorloop/db/repositories/classes";
+import { insertStudent, listActiveStudents, lockStudentForLabelEdit, updateStudentAtVersion } from "@tutorloop/db/repositories/students";
 import type { Kysely, Selectable } from "kysely";
 import type { AuthPrincipal } from "../../auth/principal.ts";
 import { ApiError } from "../../common/errors.ts";
@@ -74,14 +74,17 @@ export async function getClassDetail(db: Db, principal: AuthPrincipal, classId: 
   return { ...classroom, students: students.map(toStudentDto) };
 }
 
-async function changeClass(
+function changeClass(
   db: Db, principal: AuthPrincipal, classId: string, expectedVersion: number,
   changes: Parameters<typeof updateClassAtVersion>[4],
 ): Promise<ClassRow> {
-  const classroom = await requireOwnedClass(db, principal, classId);
-  const row = await updateClassAtVersion(db, principal.userId, classroom.id, expectedVersion, changes);
-  if (!row) throw new ApiError("STALE_VERSION", "Class has changed.");
-  return row;
+  return db.transaction().execute(async (trx) => {
+    const classroom = await requireOwnedClass(trx, principal, classId);
+    await lockClassForLabelEdit(trx, classroom.id);
+    const row = await updateClassAtVersion(trx, principal.userId, classroom.id, expectedVersion, changes);
+    if (!row) throw new ApiError("STALE_VERSION", "Class has changed.");
+    return row;
+  });
 }
 
 export async function updateClass(
@@ -112,19 +115,21 @@ export async function addStudent(
   return toStudentDto(row);
 }
 
-async function changeStudent(
+function changeStudent(
   db: Db, principal: AuthPrincipal, classId: string, studentId: string, expectedVersion: number,
   changes: Parameters<typeof updateStudentAtVersion>[4],
 ): Promise<StudentRow> {
-  const classroom = await requireOwnedClass(db, principal, classId);
-  if (idSchema.safeParse(studentId).success) {
-    const row = await updateStudentAtVersion(db, classroom.id, studentId, expectedVersion, changes);
-    if (row) return row;
-    if (await findStudent(db, classroom.id, studentId)) {
-      throw new ApiError("STALE_VERSION", "Student has changed.");
+  return db.transaction().execute(async (trx) => {
+    const classroom = await requireOwnedClass(trx, principal, classId);
+    if (!idSchema.safeParse(studentId).success || !await lockStudentForLabelEdit(trx, classroom.id, studentId)) {
+      throw new ApiError("NOT_FOUND", "Student not found.");
     }
-  }
-  throw new ApiError("NOT_FOUND", "Student not found.");
+    // Proposal approvals that need both rows also take the Student lock before the Class lock.
+    await lockClassForLabelEdit(trx, classroom.id);
+    const row = await updateStudentAtVersion(trx, classroom.id, studentId, expectedVersion, changes);
+    if (!row) throw new ApiError("STALE_VERSION", "Student has changed.");
+    return row;
+  });
 }
 
 export async function updateStudent(

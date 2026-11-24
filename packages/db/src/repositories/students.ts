@@ -45,11 +45,16 @@ export function lockStudentsByAlias(db: Transaction<Database>, classId: string, 
     .orderBy("id").forNoKeyUpdate().execute();
 }
 
+export function lockStudentForLabelEdit(db: Transaction<Database>, classId: string, studentId: string) {
+  return db.selectFrom("students").select("id").where("class_id", "=", classId).where("id", "=", studentId)
+    .forNoKeyUpdate().executeTakeFirst();
+}
+
 export function updateStudentAtVersion(
-  db: Kysely<Database>, classId: string, studentId: string, expectedVersion: number, changes: StudentChanges,
+  db: Transaction<Database>, classId: string, studentId: string, expectedVersion: number, changes: StudentChanges,
 ) {
   return db.updateTable("students")
-    .set((eb) => ({ ...changes, updated_at: new Date(), version: eb("version", "+", 1) }))
+    .set((eb) => ({ ...changes, updated_at: sql<Date>`clock_timestamp()`, version: eb("version", "+", 1) }))
     .where("class_id", "=", classId)
     .where("id", "=", studentId)
     .where("version", "=", sql<number>`${expectedVersion}::bigint`)

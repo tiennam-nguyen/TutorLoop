@@ -1,4 +1,4 @@
-import { type Insertable, type Kysely, sql, type Transaction } from "kysely";
+import { type Expression, type Insertable, type Kysely, sql, type Transaction } from "kysely";
 import type { Database } from "../database.ts";
 import { exactTimestamptz } from "./raw-notes.ts";
 
@@ -15,7 +15,9 @@ export function insertProposalEvidence(db: Transaction<Database>, values: Propos
     .returning("id").executeTakeFirstOrThrow();
 }
 
-export function listRecentIssueEvidence(db: Kysely<Database>, classId: string, issueIds: string[]) {
+export function listRecentIssueEvidence(
+  db: Kysely<Database>, classId: string, issueIds: string[], cutoff?: Expression<Date>,
+) {
   return db.with("ranked_evidence", (cte) => cte.selectFrom("evidence_events as evidence")
     .innerJoin("student_issues as issue", (join) => join
       .onRef("issue.id", "=", "evidence.student_issue_id").onRef("issue.class_id", "=", "evidence.class_id")
@@ -23,8 +25,8 @@ export function listRecentIssueEvidence(db: Kysely<Database>, classId: string, i
     .innerJoin("raw_notes as source", (join) => join
       .onRef("source.id", "=", "evidence.raw_note_id").onRef("source.class_id", "=", "evidence.class_id"))
     .where("evidence.class_id", "=", classId).where("issue.id", "=", sql<string>`any(${issueIds}::uuid[])`)
-    // Any learner's old label may appear in a note. Only text recorded after known roster edits is eligible.
-    .where((eb) => eb.not(eb.exists(
+    .where((eb) => cutoff ? eb("source.created_at", ">", cutoff) : eb.not(eb.exists(
+      // Keep the original Student-only history scope for local structurers.
       eb.selectFrom("students as roster_edit").select("roster_edit.id")
         .where("roster_edit.class_id", "=", classId).where("roster_edit.version", ">", 1)
         .whereRef("roster_edit.updated_at", ">=", "source.created_at"),
