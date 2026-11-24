@@ -14,7 +14,8 @@ if (!["http:", "https:"].includes(appUrl.protocol) || appUrl.href !== `${appUrl.
   throw new Error("APP_ORIGIN must be an HTTP or HTTPS origin.");
 }
 
-const db = createDb(requireEnv("DATABASE_URL"));
+const databaseUrl = requireEnv("DATABASE_URL");
+const db = createDb(databaseUrl);
 try {
   const auth = createBetterAuth(db, {
     origin: appUrl.origin,
@@ -22,7 +23,7 @@ try {
     googleClientId: requireEnv("GOOGLE_CLIENT_ID"),
     googleClientSecret: requireEnv("GOOGLE_CLIENT_SECRET"),
   });
-  const app = await createApp({ authVerifier: betterAuthVerifier(auth), db });
+  const app = await createApp({ authVerifier: betterAuthVerifier(auth), db, readinessDatabaseUrl: databaseUrl });
   app.addHook("onClose", () => db.destroy());
   registerAuthRoutes(app, appUrl.origin, auth.handler);
 

@@ -13,6 +13,7 @@ export const notes = {
   followUp: "An nhớ đổi dấu ở bước đầu nhưng vẫn sai ở bước cuối.",
   retry: "An cần ghi lại bài kiểm tra về dấu.",
   reassessmentOutcome: "An tự đổi dấu đúng. Bình làm đúng sau khi được nhắc.",
+  recurrence: "Ở bài sau, An lại quên đổi dấu khi chuyển vế.",
 };
 
 const draft = (items: ProposalDraftItemV1[]): ProposalDraftV1 => ({ schemaVersion: "1", items });
@@ -124,7 +125,24 @@ export function captureFixtures(signal: AbortSignal) {
           throw new Error("Fixture structuring failure");
         }
         retries.delete(input.rawNoteId);
-        return draft([{ key: "retry", type: "CREATE_EVIDENCE", studentRef: resolved("An"), observationText: notes.retry }]);
+        return draft([
+          { key: "retry-canonical", type: "CREATE_CANONICAL_ISSUE", label: "Lỗi dấu trong bài kiểm tra" },
+          { key: "retry-issue", type: "CREATE_STUDENT_ISSUE", studentRef: resolved("An"),
+            canonicalIssueRef: { kind: "PROPOSED", proposalKey: "retry-canonical" } },
+          { key: "retry", type: "CREATE_EVIDENCE", studentRef: resolved("An"), observationText: notes.retry,
+            studentIssueRef: { kind: "PROPOSED", proposalKey: "retry-issue" } },
+        ]);
+      }
+      case notes.recurrence: {
+        const student = input.students.find(({ displayLabel }) => displayLabel === "An");
+        const issue = input.studentIssues.find(({ studentId }) => studentId === student?.studentId);
+        if (!issue) throw new Error("Missing recurrence target for An");
+        const studentIssueRef = { kind: "EXISTING", studentIssueId: issue.studentIssueId } as const;
+        return draft([
+          { key: "An-outcome", type: "CREATE_EVIDENCE", studentRef: resolved("An"), studentIssueRef,
+            observationText: "An forgot to change the sign again." },
+          { key: "An-transition", type: "TRANSITION_STUDENT_ISSUE", studentIssueRef, expectedVersion: issue.version, toState: "OPEN" },
+        ]);
       }
       case notes.reassessmentOutcome:
         return draft(["An", "Bình"].flatMap((name): ProposalDraftItemV1[] => {

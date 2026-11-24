@@ -20,7 +20,8 @@ const testTeacher: AuthVerifier = async (request) => {
 
 export async function startTestApi(origin: string, port: number) {
   const postgres = await startPostgres();
-  const db = createDb(postgres.getConnectionUri());
+  const databaseUrl = postgres.getConnectionUri();
+  const db = createDb(databaseUrl);
   let app: Awaited<ReturnType<typeof createApp>> | undefined;
   const worker = new AbortController();
   let workerDone: Promise<void> | undefined;
@@ -41,7 +42,7 @@ export async function startTestApi(origin: string, port: number) {
 
   try {
     await runMigrations(db);
-    app = await createApp({ authVerifier: testTeacher, db });
+    app = await createApp({ authVerifier: testTeacher, db, readinessDatabaseUrl: databaseUrl });
     const auth = createBetterAuth(db, {
       origin,
       secret: "tutorloop-e2e-only-secret-with-no-production-access",
