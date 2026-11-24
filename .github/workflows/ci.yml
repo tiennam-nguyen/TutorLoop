@@ -31,7 +31,9 @@ jobs:
         run: pnpm test
       - name: Integration tests with Testcontainers PostgreSQL 18
         run: pnpm test:integration --maxWorkers 2
-      - name: Install Playwright Chromium
-        run: pnpm exec playwright install --with-deps chromium
       - name: Browser tests with Fake AI and Testcontainers PostgreSQL 18
-        run: pnpm test:e2e --workers 1
+        env:
+          PLAYWRIGHT_CHROMIUM_CHANNEL: chrome
+        run: |
+          google-chrome --version
+          pnpm test:e2e --workers 1
