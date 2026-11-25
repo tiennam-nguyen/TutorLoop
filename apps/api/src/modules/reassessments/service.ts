@@ -3,7 +3,8 @@ import {
   type CreateReassessmentInput, idSchema, type ReassessmentDto, type ReassessmentDueQueueDto,
 } from "@tutorloop/contracts";
 import type { Database } from "@tutorloop/db/database";
-import { interventionsWithTargets, lockInterventionTargets } from "@tutorloop/db/repositories/interventions";
+import { interventionsWithTargets } from "@tutorloop/db/repositories/interventions";
+import { lockActiveStudentIssueTargets } from "@tutorloop/db/repositories/students";
 import {
   findReassessment, findReassessmentByRequest, insertReassessment, insertReassessmentTargets,
   listDueReassessments, listReassessmentTargetDisplay, listReassessmentTargetStatuses, lockLinkedInterventionTargets,
@@ -85,7 +86,7 @@ export function scheduleReassessment(
     }
 
     const issueIds = targets.map((target) => target.student_issue_id);
-    const issues = await lockInterventionTargets(trx, classroom.id, issueIds);
+    const issues = await lockActiveStudentIssueTargets(trx, classroom.id, issueIds);
     if (issues.length !== targets.length) throw new ApiError("NOT_FOUND", "Student Issue not found.");
 
     const linked = targets.filter((target) => target.intervention_id !== null);

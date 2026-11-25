@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import { canonicalIssueDetailDtoSchema, interventionDtoSchema, studentOverviewDtoSchema } from "@tutorloop/contracts";
 import { createDb } from "@tutorloop/db/client";
 import { runMigrations } from "@tutorloop/db/migrate";
 import { buildCanonicalIssue, buildClass, buildStudent } from "@tutorloop/testkit/builders";
 import { startPostgres } from "@tutorloop/testkit/postgres";
+import { sql } from "kysely";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { createApp } from "../src/app.ts";
 import { anonymousAuthVerifier, fixedUserAuthVerifier } from "./support/auth.ts";
@@ -216,3 +218,167 @@ test("scopes create and detail to an authenticated Class owner", async () => {
     await anonymousApp.close();
   }
 });
+
+test("rejects new Interventions targeting an archived Student or mixed active/archived batch while preserving retries", async () => {
+  const fixture = await seedClass(2);
+  const [active, archived] = fixture.students;
+  const [activeIssue, archivedIssue] = fixture.issueIds;
+
+  const priorInput = groupInput([activeIssue!, archivedIssue!]);
+  const prior = await record(fixture.id, priorInput);
+  expect(prior.statusCode, prior.body).toBe(201);
+  const priorDto = interventionDtoSchema.parse(prior.json());
+
+  const archiveRes = await app.inject({
+    method: "POST", url: `${classUrl(fixture.id)}/students/${archived!.id}/archive`, payload: { expectedVersion: 1 },
+  });
+  expect(archiveRes.statusCode, archiveRes.body).toBe(204);
+
+  const retryAfterArchive = await record(fixture.id, priorInput);
+  expect(retryAfterArchive.statusCode, retryAfterArchive.body).toBe(201);
+  expect(retryAfterArchive.json()).toEqual(priorDto);
+
+  const singleBlockedId = randomUUID();
+  for (const [ids, reqId] of [
+    [[archivedIssue!], singleBlockedId],
+    [[activeIssue!, archivedIssue!], randomUUID()],
+  ] as const) {
+    const blocked = await record(fixture.id, { ...groupInput([...ids]), clientRequestId: reqId });
+    expect(blocked.statusCode, blocked.body).toBe(404);
+    expect(blocked.json()).toMatchObject({ error: { code: "NOT_FOUND" } });
+  }
+  expect(await db.selectFrom("interventions").select("id").where("class_id", "=", fixture.id).execute()).toHaveLength(1);
+
+  const activeOnly = await record(fixture.id, { ...groupInput([activeIssue!]), clientRequestId: singleBlockedId });
+  expect(activeOnly.statusCode, activeOnly.body).toBe(201);
+  expect(studentOverviewDtoSchema.parse(await read(`${classUrl(fixture.id)}/students/${active!.id}/overview`)).interventions)
+    .toHaveLength(2);
+  expect(studentOverviewDtoSchema.parse(await read(`${classUrl(fixture.id)}/students/${archived!.id}/overview`)).interventions)
+    .toEqual([priorDto]);
+});
+
+test("serializes concurrent archive and Intervention create across lock interleavings", async () => {
+  const fixture = await seedClass(2);
+  const [firstStudent, secondStudent] = fixture.students;
+  const [firstIssue, secondIssue] = fixture.issueIds;
+
+  await sql`
+    CREATE FUNCTION hold_student_archive_lock() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      IF NEW.id = ${sql.lit(firstStudent!.id)}::uuid AND NEW.archived_at IS NOT NULL THEN
+        PERFORM pg_advisory_xact_lock_shared(2031);
+      END IF;
+      RETURN NEW;
+    END;
+    $$;
+    CREATE TRIGGER hold_student_archive_lock BEFORE UPDATE ON students
+      FOR EACH ROW EXECUTE FUNCTION hold_student_archive_lock();
+
+    CREATE FUNCTION hold_intervention_target_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      IF NEW.student_issue_id = ${sql.lit(secondIssue!)}::uuid THEN
+        PERFORM pg_advisory_xact_lock_shared(2032);
+      END IF;
+      RETURN NEW;
+    END;
+    $$;
+    CREATE TRIGGER hold_intervention_target_insert BEFORE INSERT ON intervention_targets
+      FOR EACH ROW EXECUTE FUNCTION hold_intervention_target_insert();
+  `.execute(db);
+
+  try {
+    // Interleaving A: archive holds students FOR NO KEY UPDATE first; create must wait and then return 404.
+    await db.connection().execute(async (connection) => {
+      await sql`SELECT pg_advisory_lock(2031)`.execute(connection);
+      let archivePromise: Promise<Awaited<ReturnType<typeof app.inject>>> | undefined;
+      let createPromise: Promise<Awaited<ReturnType<typeof record>>> | undefined;
+      try {
+        archivePromise = Promise.resolve(app.inject({
+          method: "POST", url: `${classUrl(fixture.id)}/students/${firstStudent!.id}/archive`, payload: { expectedVersion: 1 },
+        }));
+        const deadline = Date.now() + 3_000;
+        let archivePid: number | undefined;
+        while (!archivePid && Date.now() < deadline) {
+          const { rows } = await sql<{ pid: number }>`
+            SELECT activity.pid FROM pg_stat_activity AS activity
+            WHERE activity.datname = current_database() AND pg_backend_pid() = ANY(pg_blocking_pids(activity.pid))
+          `.execute(connection);
+          archivePid = rows[0]?.pid;
+          if (!archivePid) await delay(20);
+        }
+        expect(archivePid).toBeDefined();
+
+        createPromise = Promise.resolve(record(fixture.id, groupInput([firstIssue!])));
+        let createBlocked = false;
+        const blockDeadline = Date.now() + 3_000;
+        while (!createBlocked && Date.now() < blockDeadline) {
+          const { rows } = await sql<{ blocked: boolean }>`
+            SELECT EXISTS(
+              SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND ${archivePid!} = ANY(pg_blocking_pids(pid))
+            ) AS blocked
+          `.execute(connection);
+          createBlocked = rows[0]!.blocked;
+          if (!createBlocked) await delay(20);
+        }
+        expect(createBlocked).toBe(true);
+      } finally {
+        await sql`SELECT pg_advisory_unlock(2031)`.execute(connection);
+      }
+      const [archiveRes, createRes] = await Promise.all([archivePromise!, createPromise!]);
+      expect(archiveRes.statusCode, archiveRes.body).toBe(204);
+      expect(createRes.statusCode, createRes.body).toBe(404);
+      expect(createRes.json()).toMatchObject({ error: { code: "NOT_FOUND" } });
+      await expectNoInterventions(fixture.id);
+    });
+
+    // Interleaving B: create locks students FOR SHARE first; archive waits until create commits 201.
+    await db.connection().execute(async (connection) => {
+      await sql`SELECT pg_advisory_lock(2032)`.execute(connection);
+      let createPromise: Promise<Awaited<ReturnType<typeof record>>> | undefined;
+      let archivePromise: Promise<Awaited<ReturnType<typeof app.inject>>> | undefined;
+      try {
+        createPromise = Promise.resolve(record(fixture.id, groupInput([secondIssue!])));
+        const deadline = Date.now() + 3_000;
+        let createPid: number | undefined;
+        while (!createPid && Date.now() < deadline) {
+          const { rows } = await sql<{ pid: number }>`
+            SELECT activity.pid FROM pg_stat_activity AS activity
+            WHERE activity.datname = current_database() AND pg_backend_pid() = ANY(pg_blocking_pids(activity.pid))
+          `.execute(connection);
+          createPid = rows[0]?.pid;
+          if (!createPid) await delay(20);
+        }
+        expect(createPid).toBeDefined();
+
+        archivePromise = Promise.resolve(app.inject({
+          method: "POST", url: `${classUrl(fixture.id)}/students/${secondStudent!.id}/archive`, payload: { expectedVersion: 1 },
+        }));
+        let archiveBlocked = false;
+        const blockDeadline = Date.now() + 3_000;
+        while (!archiveBlocked && Date.now() < blockDeadline) {
+          const { rows } = await sql<{ blocked: boolean }>`
+            SELECT EXISTS(
+              SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND ${createPid!} = ANY(pg_blocking_pids(pid))
+            ) AS blocked
+          `.execute(connection);
+          archiveBlocked = rows[0]!.blocked;
+          if (!archiveBlocked) await delay(20);
+        }
+        expect(archiveBlocked).toBe(true);
+      } finally {
+        await sql`SELECT pg_advisory_unlock(2032)`.execute(connection);
+      }
+      const [createRes, archiveRes] = await Promise.all([createPromise!, archivePromise!]);
+      expect(createRes.statusCode, createRes.body).toBe(201);
+      expect(archiveRes.statusCode, archiveRes.body).toBe(204);
+      expect(await db.selectFrom("interventions").select("id").where("class_id", "=", fixture.id).execute()).toHaveLength(1);
+    });
+  } finally {
+    await sql`
+      DROP TRIGGER hold_intervention_target_insert ON intervention_targets;
+      DROP FUNCTION hold_intervention_target_insert();
+      DROP TRIGGER hold_student_archive_lock ON students;
+      DROP FUNCTION hold_student_archive_lock();
+    `.execute(db);
+  }
+}, 15_000);

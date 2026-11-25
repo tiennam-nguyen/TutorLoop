@@ -15,7 +15,7 @@ import {
 import { findRawNote } from "@tutorloop/db/repositories/raw-notes";
 import { listClassCanonicalIssues } from "@tutorloop/db/repositories/issues";
 import { listActiveStudents } from "@tutorloop/db/repositories/students";
-import { type Expression, type Kysely, sql, type Transaction } from "kysely";
+import { type Expression, type ExpressionBuilder, type Kysely, sql, type Transaction } from "kysely";
 
 export type StructureJobDeps = {
   db: Kysely<Database>;
@@ -43,6 +43,23 @@ export function withCurrentStructureClaim<T>(
   });
 }
 
+function targetedByReassessment(
+  eb: ExpressionBuilder<Database, "students">,
+  classId: string,
+  reassessmentId: string,
+) {
+  return eb.exists(
+    eb.selectFrom("reassessment_targets as target")
+      .innerJoin("student_issues as issue", (join) => join
+        .onRef("issue.id", "=", "target.student_issue_id")
+        .onRef("issue.class_id", "=", "target.class_id"))
+      .select("issue.student_id")
+      .where("target.class_id", "=", classId)
+      .where("target.reassessment_id", "=", reassessmentId)
+      .whereRef("issue.student_id", "=", "students.id"),
+  );
+}
+
 async function loadContext(
   db: Kysely<Database>, note: NonNullable<Awaited<ReturnType<typeof findRawNote>>>,
   cutoff?: Expression<Date>,
@@ -52,20 +69,30 @@ async function loadContext(
   const reassessmentId = outcome ? note.reassessment_id : null;
   if (outcome && reassessmentId === null) throw new StructureJobError("INVALID_JOB_PAYLOAD");
 
-  const classIssues = db.selectFrom("student_issues")
+  const baseIssues = db.selectFrom("student_issues")
     .innerJoin("students", (join) => join.onRef("students.id", "=", "student_issues.student_id")
       .onRef("students.class_id", "=", "student_issues.class_id"))
     .select(["student_issues.id", "student_issues.student_id", "student_issues.canonical_issue_id",
       "student_issues.manifestation", "student_issues.state", "student_issues.version"])
-    .where("student_issues.class_id", "=", classId).where("students.archived_at", "is", null)
+    .where("student_issues.class_id", "=", classId)
     .orderBy("student_issues.id");
-  const candidateQuery = reassessmentId === null ? classIssues : classIssues.where((eb) => eb.exists(
-    eb.selectFrom("reassessment_targets").select("student_issue_id")
-      .where("class_id", "=", classId).where("reassessment_id", "=", reassessmentId)
-      .whereRef("student_issue_id", "=", "student_issues.id"),
-  ));
+  const candidateQuery = reassessmentId === null
+    ? baseIssues.where("students.archived_at", "is", null)
+    : baseIssues.where((eb) => eb.exists(
+      eb.selectFrom("reassessment_targets").select("student_issue_id")
+        .where("class_id", "=", classId).where("reassessment_id", "=", reassessmentId)
+        .whereRef("student_issue_id", "=", "student_issues.id"),
+    ));
+  const studentsQuery = reassessmentId === null
+    ? listActiveStudents(db, classId)
+    : db.selectFrom("students").selectAll().where("class_id", "=", classId)
+      .where((eb) => eb.or([
+        eb("archived_at", "is", null),
+        targetedByReassessment(eb, classId, reassessmentId),
+      ]))
+      .orderBy("created_at").orderBy("id").execute();
   const [students, studentIssues, allCanonical, olderIssueText] = await Promise.all([
-    listActiveStudents(db, classId),
+    studentsQuery,
     candidateQuery.select(afterLabelEdit("student_issues.created_at", cutoff)).execute(),
     listClassCanonicalIssues(db, classId),
     cutoff ? listOlderIssueTextSources(db, classId, cutoff) : [],
@@ -141,7 +168,9 @@ function listOlderIssueTextSources(db: Kysely<Database>, classId: string, cutoff
     .execute();
 }
 
-async function loadProviderPrivacy(db: Kysely<Database>, classId: string, rawNoteId: string) {
+async function loadProviderPrivacy(
+  db: Kysely<Database>, classId: string, note: NonNullable<Awaited<ReturnType<typeof findRawNote>>>,
+) {
   // Versions signal possible name edits. Include archived Students and keep microseconds out of JS Dates.
   const source = await db.with("private_label_edit", (cte) => cte.selectFrom("classes").select("name")
     .where("id", "=", classId)
@@ -152,12 +181,17 @@ async function loadProviderPrivacy(db: Kysely<Database>, classId: string, rawNot
   ).selectFrom("private_label_edit").crossJoin("raw_notes")
     .select("name").select(sql<string | null>`private_label_edit.cutoff::text`.as("cutoff"))
     .select(sql<boolean>`coalesce(raw_notes.created_at > private_label_edit.cutoff, true)`.as("can_route"))
-    .where("raw_notes.class_id", "=", classId).where("raw_notes.id", "=", rawNoteId)
+    .where("raw_notes.class_id", "=", classId).where("raw_notes.id", "=", note.id)
     .executeTakeFirstOrThrow();
   if (!source.can_route) throw new StructureJobError("AI_PROCESSING_FAILED");
 
-  const archived = await db.selectFrom("students").select("display_label").where("class_id", "=", classId)
-    .where("archived_at", "is not", null).execute();
+  const reassessmentId = note.note_type === "REASSESSMENT_OUTCOME" ? note.reassessment_id : null;
+  let archivedQuery = db.selectFrom("students").select("display_label")
+    .where("class_id", "=", classId).where("archived_at", "is not", null);
+  if (reassessmentId !== null) {
+    archivedQuery = archivedQuery.where((eb) => eb.not(targetedByReassessment(eb, classId, reassessmentId)));
+  }
+  const archived = await archivedQuery.execute();
   return {
     privateLabels: [source.name, ...archived.map(({ display_label }) => display_label)],
     cutoff: source.cutoff === null ? undefined : sql<Date>`${source.cutoff}::timestamptz`,
@@ -222,7 +256,7 @@ export async function processStructureRawNoteJob(job: StructureJobClaim, deps: S
     // Read the roster, private labels and eligible context from one snapshot before calling the provider.
     const { input, privateLabels } = await deps.db.transaction().setIsolationLevel("repeatable read").setAccessMode("read only")
       .execute(async (trx) => {
-        const privacy = deps.route ? await loadProviderPrivacy(trx, note.class_id, note.id) : undefined;
+        const privacy = deps.route ? await loadProviderPrivacy(trx, note.class_id, note) : undefined;
         return { input: await loadContext(trx, note, privacy?.cutoff), privateLabels: privacy?.privateLabels };
       });
     const output = await generateDraft(job, deps, input, run, privateLabels);

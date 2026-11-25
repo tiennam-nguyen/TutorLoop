@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import {
   canonicalIssueDetailDtoSchema, canonicalIssueListDtoSchema, classOverviewDtoSchema, interventionDtoSchema,
   reassessmentDtoSchema, reassessmentDueQueueDtoSchema, studentOverviewDtoSchema,
@@ -289,3 +290,112 @@ test("the final skip completes a performed Reassessment when a target already ha
   expect(cancelScheduled.statusCode, cancelScheduled.body).toBe(200);
   expect(reassessmentDtoSchema.parse(cancelScheduled.json())).toMatchObject({ status: "CANCELLED", performedAt: null });
 });
+
+test("rejects new Reassessments targeting an archived Student or mixed batch while preserving retries and existing targets", async () => {
+  const { classroom, students, issueIds } = await seedClass();
+  const [active, archived] = students;
+  const [activeIssue, archivedIssue] = issueIds;
+
+  const existingInput = scheduleInput(issueIds);
+  const existing = reassessmentDtoSchema.parse((await post(reassessmentsUrl(classroom.id), existingInput)).json());
+
+  const archiveRes = await app.inject({
+    method: "POST", url: `${classUrl(classroom.id)}/students/${archived!.id}/archive`, payload: { expectedVersion: 1 },
+  });
+  expect(archiveRes.statusCode, archiveRes.body).toBe(204);
+
+  const retryRes = await post(reassessmentsUrl(classroom.id), existingInput);
+  expect(retryRes.statusCode, retryRes.body).toBe(201);
+  expect(retryRes.json()).toEqual(existing);
+
+  const blockedId = randomUUID();
+  for (const [ids, reqId] of [
+    [[archivedIssue!], blockedId],
+    [[activeIssue!, archivedIssue!], randomUUID()],
+  ] as const) {
+    const blocked = await post(reassessmentsUrl(classroom.id), { ...scheduleInput([...ids]), clientRequestId: reqId });
+    expect(blocked.statusCode, blocked.body).toBe(404);
+    expect(blocked.json()).toMatchObject({ error: { code: "NOT_FOUND" } });
+  }
+  expect(await db.selectFrom("reassessments").select("id").where("class_id", "=", classroom.id).execute())
+    .toEqual([{ id: existing.id }]);
+
+  const activeOnly = await post(reassessmentsUrl(classroom.id), { ...scheduleInput([activeIssue!]), clientRequestId: blockedId });
+  expect(activeOnly.statusCode, activeOnly.body).toBe(201);
+
+  clock = new Date(dueAt);
+  const queue = reassessmentDueQueueDtoSchema.parse(await read(`${reassessmentsUrl(classroom.id)}/due`));
+  expect(queue.due.find(({ id }) => id === existing.id)?.targets.map(({ student }) => student.id).sort())
+    .toEqual([active!.id, archived!.id].sort());
+  expect(studentOverviewDtoSchema.parse(await read(`${classUrl(classroom.id)}/students/${archived!.id}/overview`)).reassessments)
+    .toEqual([existing]);
+});
+
+test("serializes concurrent archive and Reassessment schedule so schedule never commits after archive wins", async () => {
+  const { classroom, students, issueIds } = await seedClass();
+  const [targetStudent] = students;
+  const [targetIssue] = issueIds;
+
+  await sql`
+    CREATE FUNCTION hold_reassessment_archive_lock() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      IF NEW.id = ${sql.lit(targetStudent!.id)}::uuid AND NEW.archived_at IS NOT NULL THEN
+        PERFORM pg_advisory_xact_lock_shared(2033);
+      END IF;
+      RETURN NEW;
+    END;
+    $$;
+    CREATE TRIGGER hold_reassessment_archive_lock BEFORE UPDATE ON students
+      FOR EACH ROW EXECUTE FUNCTION hold_reassessment_archive_lock();
+  `.execute(db);
+
+  try {
+    await db.connection().execute(async (connection) => {
+      await sql`SELECT pg_advisory_lock(2033)`.execute(connection);
+      let archivePromise: Promise<Awaited<ReturnType<typeof app.inject>>> | undefined;
+      let schedulePromise: Promise<Awaited<ReturnType<typeof post>>> | undefined;
+      try {
+        archivePromise = Promise.resolve(app.inject({
+          method: "POST", url: `${classUrl(classroom.id)}/students/${targetStudent!.id}/archive`, payload: { expectedVersion: 1 },
+        }));
+        const deadline = Date.now() + 3_000;
+        let archivePid: number | undefined;
+        while (!archivePid && Date.now() < deadline) {
+          const { rows } = await sql<{ pid: number }>`
+            SELECT activity.pid FROM pg_stat_activity AS activity
+            WHERE activity.datname = current_database() AND pg_backend_pid() = ANY(pg_blocking_pids(activity.pid))
+          `.execute(connection);
+          archivePid = rows[0]?.pid;
+          if (!archivePid) await delay(20);
+        }
+        expect(archivePid).toBeDefined();
+
+        schedulePromise = Promise.resolve(post(reassessmentsUrl(classroom.id), scheduleInput([targetIssue!])));
+        let scheduleBlocked = false;
+        const blockDeadline = Date.now() + 3_000;
+        while (!scheduleBlocked && Date.now() < blockDeadline) {
+          const { rows } = await sql<{ blocked: boolean }>`
+            SELECT EXISTS(
+              SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND ${archivePid!} = ANY(pg_blocking_pids(pid))
+            ) AS blocked
+          `.execute(connection);
+          scheduleBlocked = rows[0]!.blocked;
+          if (!scheduleBlocked) await delay(20);
+        }
+        expect(scheduleBlocked).toBe(true);
+      } finally {
+        await sql`SELECT pg_advisory_unlock(2033)`.execute(connection);
+      }
+      const [archiveRes, scheduleRes] = await Promise.all([archivePromise!, schedulePromise!]);
+      expect(archiveRes.statusCode, archiveRes.body).toBe(204);
+      expect(scheduleRes.statusCode, scheduleRes.body).toBe(404);
+      expect(scheduleRes.json()).toMatchObject({ error: { code: "NOT_FOUND" } });
+      expect(await db.selectFrom("reassessments").select("id").where("class_id", "=", classroom.id).execute()).toEqual([]);
+    });
+  } finally {
+    await sql`
+      DROP TRIGGER hold_reassessment_archive_lock ON students;
+      DROP FUNCTION hold_reassessment_archive_lock();
+    `.execute(db);
+  }
+}, 15_000);

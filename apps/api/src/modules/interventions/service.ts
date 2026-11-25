@@ -2,8 +2,9 @@ import { randomUUID } from "node:crypto";
 import { type CreateInterventionInput, idSchema, type InterventionDto } from "@tutorloop/contracts";
 import type { Database } from "@tutorloop/db/database";
 import {
-  findIntervention, findInterventionByRequest, insertIntervention, insertInterventionTargets, lockInterventionTargets,
+  findIntervention, findInterventionByRequest, insertIntervention, insertInterventionTargets,
 } from "@tutorloop/db/repositories/interventions";
+import { lockActiveStudentIssueTargets } from "@tutorloop/db/repositories/students";
 import type { Kysely } from "kysely";
 import type { AuthPrincipal } from "../../auth/principal.ts";
 import { ApiError } from "../../common/errors.ts";
@@ -34,7 +35,7 @@ export function recordIntervention(
       created_by_user_id: principal.userId, client_request_id: input.clientRequestId, created_at: new Date(),
     });
     if (inserted) {
-      const issues = await lockInterventionTargets(trx, classroom.id, targets);
+      const issues = await lockActiveStudentIssueTargets(trx, classroom.id, targets);
       if (issues.length !== targets.length) throw new ApiError("NOT_FOUND", "Student Issue not found.");
       await insertInterventionTargets(trx, classroom.id, inserted.id, targets);
       return toInterventionDto({ ...inserted, student_issue_ids: targets });

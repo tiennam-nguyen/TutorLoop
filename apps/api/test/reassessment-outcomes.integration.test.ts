@@ -513,3 +513,70 @@ test("completed reassessments stay closed on late outcome capture and legacy sch
     status: "COMPLETED", version: 3, performedAt: promoted.performedAt, completedAt: expect.any(String),
   });
 });
+
+test("outcome structuring includes targeted archived Student and excludes unrelated archived Students", async () => {
+  const an = await issue(await student("An", "STU_001"));
+  const binh = await issue(await student("Bình", "STU_002"));
+  const cuong = await issue(await student("Cường", "STU_003"));
+  const archiveCuong = await app.inject({
+    method: "POST", url: `${classPath()}/students/${cuong.learner.id}/archive`, payload: { expectedVersion: 1 },
+  });
+  expect(archiveCuong.statusCode, archiveCuong.body).toBe(204);
+
+  const path = await schedule([an.id, binh.id]);
+  const archiveBinh = await app.inject({
+    method: "POST", url: `${classPath()}/students/${binh.learner.id}/archive`, payload: { expectedVersion: 1 },
+  });
+  expect(archiveBinh.statusCode, archiveBinh.body).toBe(204);
+
+  const outcome = await capture(path, {
+    ...noteInput(),
+    body: "An succeeded. Bình still made sign errors. Cường was unrelated.",
+  });
+  const outcomePayload = await providerPayload(outcome.processing.jobId);
+  expect(outcomePayload).toMatchObject({
+    task: "RECONCILE_REASSESSMENT_OUTCOME",
+    note: "STU_001 succeeded. STU_002 still made sign errors. [PRIVATE] was unrelated.",
+    studentAliases: ["STU_001", "STU_002"],
+    studentIssues: expect.arrayContaining([
+      expect.objectContaining({ studentAlias: "STU_001" }),
+      expect.objectContaining({ studentAlias: "STU_002" }),
+    ]),
+  });
+  expect((outcomePayload as { studentIssues: unknown[] }).studentIssues).toHaveLength(2);
+  for (const redacted of ["An", "Bình", "Cường", "STU_003", cuong.id, binh.learner.id, cuong.learner.id]) {
+    expect(JSON.stringify(outcomePayload)).not.toContain(redacted);
+  }
+
+  const observation = await post(`${classPath()}/raw-notes`, {
+    ...noteInput(),
+    noteType: "OBSERVATION",
+    body: "An worked well. Bình and Cường are archived.",
+  });
+  expect(observation.statusCode, observation.body).toBe(201);
+  const observationPayload = await providerPayload(createRawNoteResponseSchema.parse(observation.json()).processing.jobId);
+  expect(observationPayload).toMatchObject({
+    task: "STRUCTURE_OBSERVATION_NOTE",
+    note: "STU_001 worked well. [PRIVATE] and [PRIVATE] are archived.",
+    studentAliases: ["STU_001"],
+  });
+  expect((observationPayload as { studentIssues: unknown[] }).studentIssues).toHaveLength(1);
+  expect(JSON.stringify(observationPayload)).not.toContain("STU_002");
+  expect(JSON.stringify(observationPayload)).not.toContain("STU_003");
+
+  const secondOutcome = await capture(path, {
+    ...noteInput(),
+    body: "An finished cleanly. Bình finished after prompting.",
+  });
+  const run = await structure(secondOutcome.processing.jobId, [
+    evidence(an, "an-ev", "An finished cleanly."),
+    evidence(binh, "binh-ev", "Bình finished after prompting."),
+  ]);
+  const decided = await post(`${run.url}/decisions`, {
+    clientRequestId: randomUUID(), items: [run.decide("an-ev", "APPROVE"), run.decide("binh-ev", "APPROVE")],
+  });
+  expect(decided.statusCode, decided.body).toBe(200);
+  const completed = await getReassessment(path);
+  expect(completed.status).toBe("COMPLETED");
+  expect(completed.targets.map(({ targetStatus }) => targetStatus)).toEqual(["EVIDENCED", "EVIDENCED"]);
+});

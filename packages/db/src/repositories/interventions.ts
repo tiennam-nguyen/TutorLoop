@@ -21,10 +21,6 @@ function requestedIssues(db: Transaction<Database>, classId: string, ids: readon
     .where("id", "=", sql<string>`any(${ids}::uuid[])`);
 }
 
-export function lockInterventionTargets(db: Transaction<Database>, classId: string, ids: readonly string[]) {
-  return requestedIssues(db, classId, ids).select("id").orderBy("id").forKeyShare().execute();
-}
-
 export async function insertInterventionTargets(
   db: Transaction<Database>, classId: string, interventionId: string, ids: readonly string[],
 ): Promise<void> {

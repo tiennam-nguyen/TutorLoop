@@ -45,6 +45,43 @@ export function lockStudentsByAlias(db: Transaction<Database>, classId: string, 
     .orderBy("id").forNoKeyUpdate().execute();
 }
 
+export async function lockActiveStudentIssueTargets(
+  trx: Transaction<Database>,
+  classId: string,
+  studentIssueIds: readonly string[],
+): Promise<Array<{ student_issue_id: string; student_id: string }>> {
+  if (!studentIssueIds.length) return [];
+  const activeStudents = await trx.selectFrom("students")
+    .select("students.id")
+    .where("students.class_id", "=", classId)
+    .where("students.archived_at", "is", null)
+    .where((eb) => eb.exists(
+      eb.selectFrom("student_issues")
+        .select("student_issues.id")
+        .where("student_issues.class_id", "=", classId)
+        .whereRef("student_issues.student_id", "=", "students.id")
+        .where("student_issues.id", "=", sql<string>`any(${studentIssueIds}::uuid[])`),
+    ))
+    .orderBy("students.id")
+    .forShare()
+    .execute();
+  if (!activeStudents.length) return [];
+  const activeStudentIds = activeStudents.map(({ id }) => id);
+  return trx.selectFrom("student_issues")
+    .innerJoin("students", (join) => join
+      .onRef("students.id", "=", "student_issues.student_id")
+      .onRef("students.class_id", "=", "student_issues.class_id"))
+    .select(["student_issues.id as student_issue_id", "student_issues.student_id"])
+    .where("student_issues.class_id", "=", classId)
+    .where("student_issues.id", "=", sql<string>`any(${studentIssueIds}::uuid[])`)
+    .where("students.id", "=", sql<string>`any(${activeStudentIds}::uuid[])`)
+    .where("students.archived_at", "is", null)
+    .orderBy("student_issues.student_id")
+    .orderBy("student_issues.id")
+    .forKeyShare("student_issues")
+    .execute();
+}
+
 export function lockStudentForLabelEdit(db: Transaction<Database>, classId: string, studentId: string) {
   return db.selectFrom("students").select("id").where("class_id", "=", classId).where("id", "=", studentId)
     .forNoKeyUpdate().executeTakeFirst();

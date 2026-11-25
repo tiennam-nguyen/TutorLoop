@@ -86,7 +86,7 @@ export function listReassessmentTargetDisplay(db: Db, classId: string, issueIds:
       .onRef("canonical.id", "=", "issue.canonical_issue_id").onRef("canonical.class_id", "=", "issue.class_id"))
     .leftJoin("canonical_roots as root", "root.issue_id", "canonical.id")
     .select((eb) => [
-      "issue.id as issue_id", "student.id as student_id", "student.display_label",
+      "issue.id as issue_id", "student.id as student_id", "student.display_label", "student.archived_at",
       eb.fn.coalesce("root.root_id", "canonical.id").as("canonical_id"),
       eb.fn.coalesce("root.label", "canonical.label").as("canonical_label"),
     ])
