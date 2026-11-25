@@ -352,7 +352,12 @@ async function reconcileReassessment(reassessment: Reassessment, approvals: Appr
   if (!changed.length) return;
   const targets = await listReassessmentTargetStatuses(trx, classId, id);
   const complete = canCompleteReassessment(targets.map(({ target_status }) => target_status));
-  await updateReassessmentAtVersion(trx, reassessment, complete ? { status: "COMPLETED", completed_at: now } : {}, now);
+  const performedAt = reassessment.performed_at === null ? { performed_at: now } : {};
+  await updateReassessmentAtVersion(trx, reassessment, complete
+    ? { ...performedAt, status: "COMPLETED", completed_at: now }
+    : reassessment.status === "SCHEDULED"
+      ? { ...performedAt, status: "PERFORMED_PENDING_EVIDENCE" }
+      : {}, now);
 }
 
 export function applyProposalDecisions(

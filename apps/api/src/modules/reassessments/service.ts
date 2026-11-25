@@ -184,7 +184,9 @@ export function changeReassessment(
         await skipPendingReassessmentTarget(trx, classroom.id, row.id, issueId, change.skipReason);
         const statuses = targets.map((item) => item === target ? "SKIPPED" : item.target_status);
         const complete = canCompleteReassessment(statuses);
-        await updateReassessmentAtVersion(trx, row, complete ? { status: "COMPLETED", completed_at: time } : {}, time);
+        await updateReassessmentAtVersion(trx, row, complete
+          ? { status: "COMPLETED", completed_at: time, ...(row.performed_at === null ? { performed_at: time } : {}) }
+          : {}, time);
         break;
       }
     }

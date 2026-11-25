@@ -95,7 +95,7 @@ export function listReassessmentTargetDisplay(db: Db, classId: string, issueIds:
 
 export function lockReassessment(db: Trx, classId: string, reassessmentId: string) {
   return reassessmentRows(db, classId).where("reassessments.id", "=", reassessmentId)
-    .select(["id", "class_id", "status", "version"]).forUpdate().executeTakeFirst();
+    .select(["id", "class_id", "status", "version", "performed_at"]).forUpdate().executeTakeFirst();
 }
 
 export function updateReassessmentAtVersion(

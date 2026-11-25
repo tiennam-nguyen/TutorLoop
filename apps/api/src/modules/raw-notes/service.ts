@@ -13,6 +13,7 @@ import { isPersistedProposalRun } from "@tutorloop/db/repositories/proposals";
 import {
   findRawNote, findRawNoteByRequest, insertRawNote, lockCaptureReassessment, markRawNoteVoided,
 } from "@tutorloop/db/repositories/raw-notes";
+import { updateReassessmentAtVersion } from "@tutorloop/db/repositories/reassessments";
 import type { Kysely } from "kysely";
 import type { AuthPrincipal } from "../../auth/principal.ts";
 import { ApiError } from "../../common/errors.ts";
@@ -79,8 +80,9 @@ export async function captureRawNote(
 
   return db.transaction().setIsolationLevel("read committed").execute(async (trx) => {
     const classroom = await requireOwnedClass(trx, principal, classId);
-    if (reassessmentId !== null &&
-      (!idSchema.safeParse(reassessmentId).success || !(await lockCaptureReassessment(trx, classroom.id, reassessmentId)))) {
+    const reassessment = reassessmentId === null ? undefined : idSchema.safeParse(reassessmentId).success
+      ? await lockCaptureReassessment(trx, classroom.id, reassessmentId) : undefined;
+    if (reassessmentId !== null && !reassessment) {
       throw new ApiError("NOT_FOUND", "Reassessment not found.");
     }
     // Lock the outcome's Reassessment first, matching proposal approvals. Hold the Class share lock
@@ -92,21 +94,32 @@ export async function captureRawNote(
       observed_at: observedAt, note_type: input.noteType, reassessment_id: reassessmentId,
       client_request_id: input.clientRequestId, voided_at: null, void_reason: null,
     });
+    let note: RawNoteRow;
+    let job: { id: string };
     if (inserted) {
-      const job = await insertInitialStructureJob(trx, inserted.id, classroom.id);
+      note = inserted;
+      job = await insertInitialStructureJob(trx, inserted.id, classroom.id);
       await insertProductEvent(trx, { class_id: classroom.id, actor_user_id: principal.userId,
         event_name: "raw_note_created", entity_id: inserted.id });
-      return { rawNote: toRawNoteDto(inserted), processing: { status: "QUEUED", jobId: job.id } };
+    } else {
+      // A fresh statement sees the winning transaction's note and job after the unique-index wait.
+      const existing = await findRawNoteByRequest(trx, classroom.id, principal.userId, input.clientRequestId);
+      if (!existing || existing.body !== input.body || existing.observed_at_utc !== observedAt ||
+        existing.note_type !== input.noteType || existing.reassessment_id !== reassessmentId) {
+        throw new ApiError("IDEMPOTENCY_CONFLICT", "The request ID was already used with different input.");
+      }
+      note = existing;
+      job = await findInitialStructureJob(trx, existing.id);
     }
 
-    // A fresh statement sees the winning transaction's note and job after the unique-index wait.
-    const existing = await findRawNoteByRequest(trx, classroom.id, principal.userId, input.clientRequestId);
-    if (!existing || existing.body !== input.body || existing.observed_at_utc !== observedAt ||
-      existing.note_type !== input.noteType || existing.reassessment_id !== reassessmentId) {
-      throw new ApiError("IDEMPOTENCY_CONFLICT", "The request ID was already used with different input.");
+    if (reassessment?.status === "SCHEDULED") {
+      const performedAt = inserted ? inserted.created_at : new Date();
+      await updateReassessmentAtVersion(trx, reassessment, {
+        status: "PERFORMED_PENDING_EVIDENCE",
+        performed_at: reassessment.performed_at ?? performedAt,
+      }, performedAt);
     }
-    const job = await findInitialStructureJob(trx, existing.id);
-    return { rawNote: toRawNoteDto(existing), processing: { status: "QUEUED", jobId: job.id } };
+    return { rawNote: toRawNoteDto(note), processing: { status: "QUEUED", jobId: job.id } };
   });
 }
 

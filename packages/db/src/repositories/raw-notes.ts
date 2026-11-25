@@ -54,8 +54,8 @@ export function lockRawNote(db: Transaction<Database>, classId: string, rawNoteI
 }
 
 export function lockCaptureReassessment(db: Transaction<Database>, classId: string, reassessmentId: string) {
-  return db.selectFrom("reassessments").select("id")
-    .where("class_id", "=", classId).where("id", "=", reassessmentId).forKeyShare().executeTakeFirst();
+  return db.selectFrom("reassessments").select(["id", "class_id", "status", "version", "performed_at"])
+    .where("class_id", "=", classId).where("id", "=", reassessmentId).forUpdate().executeTakeFirst();
 }
 
 export function markRawNoteVoided(db: Db, classId: string, rawNoteId: string, reason: string | null) {

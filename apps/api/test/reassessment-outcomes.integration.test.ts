@@ -166,7 +166,11 @@ test("captures an exact outcome once across the dedicated and generic routes wit
   const first = await post(`${path}/outcome-note`, input);
   expect(first.statusCode, first.body).toBe(201);
   const created = createRawNoteResponseSchema.parse(first.json());
-  const { id } = await getReassessment(path);
+  const performed = await getReassessment(path);
+  const { id } = performed;
+  expect(performed).toMatchObject({
+    status: "PERFORMED_PENDING_EVIDENCE", version: 2, performedAt: expect.any(String), completedAt: null,
+  });
   expect(created.rawNote).toMatchObject({
     noteType: "REASSESSMENT_OUTCOME", reassessmentId: id, observedAt,
   });
@@ -174,8 +178,10 @@ test("captures an exact outcome once across the dedicated and generic routes wit
   const replay = await post(`${path}/outcome-note`, { ...input, observedAt });
   expect(replay.statusCode, replay.body).toBe(201);
   expect(replay.json()).toEqual(created);
+  expect(await getReassessment(path)).toEqual(performed);
   expect((await post(`${path}/outcome-note`, { ...input, observedAt: "2026-11-20T07:00:00.123457Z" }))
     .json()).toMatchObject({ error: { code: "IDEMPOTENCY_CONFLICT" } });
+  expect(await getReassessment(path)).toEqual(performed);
   expect((await post(`${path}/outcome-note`, { ...input, reassessmentId: randomUUID() })).statusCode).toBe(400);
   const sameOwner = { ...buildClass(), owner_user_id: classroom.owner_user_id };
   const foreignOwner = buildClass();
@@ -367,18 +373,26 @@ test.each(["approve first", "skip first"] as const)(
     const binh = await issue(await student("Bình", "STU_002"));
     const path = await schedule([an.id, binh.id]);
     const note = await capture(path);
+    const performed = await getReassessment(path);
+    expect(performed).toMatchObject({
+      version: 2, status: "PERFORMED_PENDING_EVIDENCE", performedAt: expect.any(String), completedAt: null,
+    });
     const run = await structure(note.processing.jobId, [evidence(an, "evidence", "Worked independently")]);
     const approve = () => post(`${run.url}/decisions`, {
       clientRequestId: randomUUID(), items: [run.decide("evidence", "APPROVE")],
     });
     const skip = (expectedVersion: number) =>
       post(`${path}/targets/${binh.id}/skip`, { expectedVersion, skipReason: "Absent" });
-    const first = order === "approve first" ? await approve() : await skip(1);
+    const first = order === "approve first" ? await approve() : await skip(2);
     expect(first.statusCode, first.body).toBe(200);
-    expect(await getReassessment(path)).toMatchObject({ version: 2, status: "SCHEDULED", completedAt: null });
-    const second = order === "approve first" ? await skip(2) : await approve();
+    expect(await getReassessment(path)).toMatchObject({
+      version: 3, status: "PERFORMED_PENDING_EVIDENCE", performedAt: performed.performedAt, completedAt: null,
+    });
+    const second = order === "approve first" ? await skip(3) : await approve();
     expect(second.statusCode, second.body).toBe(200);
-    expect(await getReassessment(path)).toMatchObject({ version: 3, status: "COMPLETED" });
+    expect(await getReassessment(path)).toMatchObject({
+      version: 4, status: "COMPLETED", performedAt: performed.performedAt, completedAt: expect.any(String),
+    });
     expect(await db.selectFrom("student_issues").select(["state", "version"])
       .where("class_id", "=", classroom.id).execute()).toEqual(Array(2).fill({ state: "OPEN", version: 1 }));
   },
@@ -397,8 +411,105 @@ test("overlapping proposal runs serialize their target and parent changes", asyn
   })));
   for (const result of results) expect(result.statusCode, result.body).toBe(200);
   const completed = await getReassessment(path);
-  expect(completed).toMatchObject({ status: "COMPLETED", version: 3 });
+  expect(completed).toMatchObject({
+    status: "COMPLETED", version: 4, performedAt: expect.any(String), completedAt: expect.any(String),
+  });
   expect(completed.targets.map(({ targetStatus }) => targetStatus)).toEqual(["EVIDENCED", "EVIDENCED"]);
   expect(await db.selectFrom("evidence_events").select("student_issue_id").where("reassessment_id", "=", completed.id)
     .orderBy("student_issue_id").execute()).toEqual([an.id, binh.id].sort().map((id) => ({ student_issue_id: id })));
+});
+
+test("generic outcome capture promotes SCHEDULED once, rolls back conflicts, and keeps concurrent captures idempotent in lifecycle", async () => {
+  const an = await issue(await student("An", "STU_001"));
+  const existingRequestId = randomUUID();
+  const obsResponse = await post(`${classPath()}/raw-notes`, {
+    body: "Prior observation", observedAt, noteType: "OBSERVATION", clientRequestId: existingRequestId,
+  });
+  expect(obsResponse.statusCode, obsResponse.body).toBe(201);
+
+  const firstPath = await schedule([an.id]);
+  const firstId = firstPath.split("/").at(-1)!;
+  const conflict = await post(`${classPath()}/raw-notes`, {
+    ...noteInput(), clientRequestId: existingRequestId, noteType: "REASSESSMENT_OUTCOME", reassessmentId: firstId,
+  });
+  expect(conflict.statusCode, conflict.body).toBe(409);
+  expect(conflict.json()).toMatchObject({ error: { code: "IDEMPOTENCY_CONFLICT" } });
+  expect(await getReassessment(firstPath)).toMatchObject({ status: "SCHEDULED", version: 1, performedAt: null });
+
+  await capture(firstPath);
+  const performed = await getReassessment(firstPath);
+  expect(performed).toMatchObject({
+    status: "PERFORMED_PENDING_EVIDENCE", version: 2, performedAt: expect.any(String), completedAt: null,
+  });
+  await capture(firstPath);
+  expect(await getReassessment(firstPath)).toEqual(performed);
+
+  const concurrentPath = await schedule([an.id]);
+  const responses = await Promise.all([
+    post(`${concurrentPath}/outcome-note`, noteInput()),
+    post(`${concurrentPath}/outcome-note`, noteInput()),
+  ]);
+  for (const response of responses) expect(response.statusCode, response.body).toBe(201);
+  expect(await getReassessment(concurrentPath)).toMatchObject({
+    status: "PERFORMED_PENDING_EVIDENCE", version: 2, performedAt: expect.any(String), completedAt: null,
+  });
+});
+
+test("completed reassessments stay closed on late outcome capture and legacy scheduled outcomes promote before completing", async () => {
+  const an = await issue(await student("An", "STU_001"));
+  const binh = await issue(await student("Bình", "STU_002"));
+  const completedPath = await schedule([an.id]);
+  const firstNote = await capture(completedPath);
+  const firstRun = await structure(firstNote.processing.jobId, [evidence(an, "ev1", "First outcome")]);
+  expect((await post(`${firstRun.url}/decisions`, {
+    clientRequestId: randomUUID(), items: [firstRun.decide("ev1", "APPROVE")],
+  })).statusCode).toBe(200);
+  const completedBefore = await getReassessment(completedPath);
+  expect(completedBefore).toMatchObject({
+    status: "COMPLETED", performedAt: expect.any(String), completedAt: expect.any(String),
+  });
+
+  const lateNote = await capture(completedPath);
+  const lateRun = await structure(lateNote.processing.jobId, [evidence(an, "ev2", "Late additional observation")]);
+  expect((await post(`${lateRun.url}/decisions`, {
+    clientRequestId: randomUUID(), items: [lateRun.decide("ev2", "APPROVE")],
+  })).statusCode).toBe(200);
+  expect(await getReassessment(completedPath)).toEqual(completedBefore);
+  expect(await db.selectFrom("evidence_events").select("id").where("raw_note_id", "=", lateNote.rawNote.id).execute())
+    .toHaveLength(1);
+
+  const legacyPath = await schedule([an.id, binh.id]);
+  const legacyId = legacyPath.split("/").at(-1)!;
+  const legacyNoteId = randomUUID();
+  const legacyJobId = randomUUID();
+  await db.insertInto("raw_notes").values({
+    id: legacyNoteId, class_id: classroom.id, author_user_id: classroom.owner_user_id,
+    note_type: "REASSESSMENT_OUTCOME", body: "Pre-fix outcome note",
+    observed_at: sql<Date>`${observedAt}::timestamptz`, reassessment_id: legacyId,
+    client_request_id: randomUUID(), created_at: new Date(),
+  }).execute();
+  await db.insertInto("jobs").values({
+    id: legacyJobId, kind: "STRUCTURE_RAW_NOTE", dedupe_key: `legacy-${legacyNoteId}`,
+    payload: { classId: classroom.id, rawNoteId: legacyNoteId }, status: "QUEUED",
+    run_after: new Date(), created_at: new Date(), updated_at: new Date(),
+  }).execute();
+  const legacyRun = await structure(legacyJobId, [
+    evidence(an, "an-ev", "An solved it."),
+    evidence(binh, "binh-ev", "Bình solved it."),
+  ]);
+
+  expect((await post(`${legacyRun.url}/decisions`, {
+    clientRequestId: randomUUID(), items: [legacyRun.decide("an-ev", "APPROVE")],
+  })).statusCode).toBe(200);
+  const promoted = await getReassessment(legacyPath);
+  expect(promoted).toMatchObject({
+    status: "PERFORMED_PENDING_EVIDENCE", version: 2, performedAt: expect.any(String), completedAt: null,
+  });
+
+  expect((await post(`${legacyRun.url}/decisions`, {
+    clientRequestId: randomUUID(), items: [legacyRun.decide("binh-ev", "APPROVE")],
+  })).statusCode).toBe(200);
+  expect(await getReassessment(legacyPath)).toMatchObject({
+    status: "COMPLETED", version: 3, performedAt: promoted.performedAt, completedAt: expect.any(String),
+  });
 });
