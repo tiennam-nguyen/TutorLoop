@@ -3,7 +3,7 @@
 import type { ClassDto, CreateRawNoteResponse, ReassessmentDueQueueDto, ReassessmentTargetStatus, StudentDto } from "@tutorloop/contracts";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { getClassDetail, getReassessmentDueQueue, markReassessmentPerformed } from "../lib/api";
+import { getClassDetail, getReassessmentDueQueue, markReassessmentPerformed, skipReassessmentTarget } from "../lib/api";
 import { formatObservedTime } from "../lib/observed-time";
 import { rosterLabels } from "../lib/roster-labels";
 import { useWorkspaceError } from "../lib/session";
@@ -26,7 +26,8 @@ function affectedStudents(targets: QueueTarget[], names: ReadonlyMap<string, str
     byStudent.set(target.student.id, group);
   }
   return [...byStudent].map(([id, group]) => ({
-    id, label: names.get(id) ?? group[0].student.displayLabel, targets: group,
+    id, label: names.get(id) ?? group[0].student.displayLabel,
+    archived: group[0].student.archivedAt !== null, targets: group,
   })).sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true }));
 }
 
@@ -39,12 +40,13 @@ export function DueQueue({ classroom, onSaved }: {
   const [roster, setRoster] = useState<StudentDto[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [markingId, setMarkingId] = useState<string | null>(null);
+  const [skippingKey, setSkippingKey] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const revalidation = useRef<AbortController | null>(null);
   const { id: classId, timezone } = classroom;
-  const busy = openId !== null || markingId !== null;
+  const busy = openId !== null || markingId !== null || skippingKey !== null;
   const error = actionError ?? refreshError;
   const names = rosterLabels(roster, queue
     ? [...queue.due, ...queue.needsResults].flatMap(({ targets }) => targets.map(({ student }) => student))
@@ -126,11 +128,35 @@ export function DueQueue({ classroom, onSaved }: {
     }
   }
 
+  async function skipArchivedTarget(entry: QueueEntry, target: QueueTarget) {
+    if (busy) return;
+    revalidation.current?.abort();
+    setActionError(null);
+    const key = `${entry.id}:${target.studentIssueId}`;
+    setSkippingKey(key);
+    try {
+      await skipReassessmentTarget(classId, entry.id, target.studentIssueId, entry.version, "Student archived");
+      const refreshed = await getReassessmentDueQueue(classId);
+      setQueue(refreshed);
+      setRefreshError(null);
+    } catch (failure) {
+      const refreshed = await getReassessmentDueQueue(classId).catch(() => null);
+      if (refreshed) {
+        setQueue(refreshed);
+        setRefreshError(null);
+      }
+      setActionError(workspaceError(failure));
+    } finally {
+      setSkippingKey(null);
+    }
+  }
+
   function item(entry: QueueEntry) {
     const opened = openId === entry.id;
     const students = affectedStudents(entry.targets, names);
     return <li key={entry.id} className="reassessment-row">
-      <QueueCard entry={entry} timeZone={timezone} students={students}>
+      <QueueCard entry={entry} timeZone={timezone} students={students} busy={busy} skippingKey={skippingKey}
+        onSkipTarget={(target) => void skipArchivedTarget(entry, target)}>
         {opened ? <OutcomeNoteForm classId={classId} reassessmentId={entry.id} timeZone={timezone}
           performedAt={entry.performedAt}
           students={students.filter(({ targets }) => targets.some((target) => target.targetStatus === "PENDING"))
@@ -168,10 +194,13 @@ export function DueQueue({ classroom, onSaved }: {
   </>;
 }
 
-function QueueCard({ entry, timeZone, students, children }: {
+function QueueCard({ entry, timeZone, students, busy, skippingKey, onSkipTarget, children }: {
   entry: QueueEntry;
   timeZone: string;
   students: ReturnType<typeof affectedStudents>;
+  busy: boolean;
+  skippingKey: string | null;
+  onSkipTarget: (target: QueueTarget) => void;
   children: ReactNode;
 }) {
   const headingId = useId();
@@ -193,12 +222,21 @@ function QueueCard({ entry, timeZone, students, children }: {
     </p>}
     {entry.notes && <p className="note-text">{entry.notes}</p>}
     <ul className="reassessment-targets" aria-label="Affected students">
-      {students.map(({ id, label, targets }) => <li key={id}>
+      {students.map(({ id, label, archived, targets }) => <li key={id}>
         <Link href={`${classPath}/students/${encodeURIComponent(id)}#timeline`}>{label}</Link>
-        {targets.length === 1 ? <TargetResult target={targets[0]} showStatus={showResults} /> :
+        {archived && " · Archived"}
+        {targets.length === 1 ? (
+          <TargetResult target={targets[0]} showStatus={showResults} busy={busy}
+            skipping={skippingKey === `${entry.id}:${targets[0].studentIssueId}`}
+            onSkip={() => onSkipTarget(targets[0])} />
+        ) : (
           <ul>{targets.map((target) => <li key={target.studentIssueId}>
-            {target.canonicalIssue.label}<TargetResult target={target} showStatus={showResults} />
-          </li>)}</ul>}
+            {target.canonicalIssue.label}
+            <TargetResult target={target} showStatus={showResults} busy={busy}
+              skipping={skippingKey === `${entry.id}:${target.studentIssueId}`}
+              onSkip={() => onSkipTarget(target)} />
+          </li>)}</ul>
+        )}
       </li>)}
     </ul>
     {interventions.size > 0 && <div className="stack">
@@ -212,9 +250,19 @@ function QueueCard({ entry, timeZone, students, children }: {
   </article>;
 }
 
-function TargetResult({ target, showStatus }: { target: QueueTarget; showStatus: boolean }) {
+function TargetResult({ target, showStatus, busy, skipping, onSkip }: {
+  target: QueueTarget;
+  showStatus: boolean;
+  busy: boolean;
+  skipping: boolean;
+  onSkip: () => void;
+}) {
+  const canSkip = target.student.archivedAt !== null && target.targetStatus === "PENDING";
   return <>
-    {showStatus && ` · ${targetStatus[target.targetStatus]}`}
+    {(showStatus || target.targetStatus !== "PENDING") && ` · ${targetStatus[target.targetStatus]}`}
+    {canSkip && <>{" "}<button type="button" disabled={busy} onClick={onSkip}>
+      {skipping ? "Skipping…" : "Skip target"}
+    </button></>}
     {target.skipReason && <p className="note-text">{target.skipReason}</p>}
   </>;
 }

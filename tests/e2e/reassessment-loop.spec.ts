@@ -366,3 +366,196 @@ test("reassessment loop: a group recheck stays in Needs results until both outco
     await expect(timeline.locator(provenanceHref!)).toContainText(evidence);
   }
 });
+
+test("archived reassessment target: stays visible, requires explicit skip, and keeps parent incomplete until remaining target is evidenced", async ({ baseURL, page }) => {
+  test.setTimeout(90_000);
+  if (!baseURL) throw new Error("Set the Playwright baseURL.");
+  await page.context().addCookies([{ name: "tutorloop-e2e", value: `capture-${randomUUID()}`, url: baseURL }]);
+  const classroom = await body<ClassDto>(await page.request.post("/api/v1/classes", {
+    data: { name: "Archived target class", timezone: "Asia/Bangkok", clientRequestId: randomUUID() },
+  }));
+  const classPath = `/classes/${classroom.id}`;
+  const api = `/api/v1${classPath}`;
+  const an = await body<StudentDto>(await page.request.post(`${api}/students`, {
+    data: { displayLabel: "An", clientRequestId: randomUUID() },
+  }));
+  const binh = await body<StudentDto>(await page.request.post(`${api}/students`, {
+    data: { displayLabel: "Bình", clientRequestId: randomUUID() },
+  }));
+
+  const capture = await body<CreateRawNoteResponse>(await page.request.post(`${api}/raw-notes`, {
+    data: { body: notes.projection, observedAt: "2020-11-20T07:00:00.000Z", noteType: "OBSERVATION", clientRequestId: randomUUID() },
+  }));
+  let runPath = "";
+  await expect.poll(async () => {
+    const { processing } = await body<RawNoteDetailDto>(await page.request.get(`${api}/raw-notes/${capture.rawNote.id}`));
+    if (processing.status === "READY") runPath = `${api}/proposal-runs/${processing.proposalRunId}`;
+    return processing.status;
+  }).toBe("READY");
+  const run = await body<ProposalRunDetailDto>(await page.request.get(runPath));
+  await body(await page.request.post(`${runPath}/decisions`, {
+    data: {
+      clientRequestId: randomUUID(),
+      items: run.items.map(({ id, originalPayload }) => ({
+        proposalItemId: id, decision: originalPayload.key === "rejected-observation" ? "REJECT" : "APPROVE",
+      })),
+    },
+  }));
+
+  const [canonical] = await body<CanonicalIssueSummaryDto[]>(await page.request.get(`${api}/issues`));
+  const issueApi = `${api}/issues/${canonical.id}`;
+  const detailBefore = await body<CanonicalIssueDetailDto>(await page.request.get(issueApi));
+  const anIssue = detailBefore.studentIssues.find(({ studentId }) => studentId === an.id)!.id;
+  const binhIssue = detailBefore.studentIssues.find(({ studentId }) => studentId === binh.id)!.id;
+
+  const scheduled = await body<ReassessmentDto>(await page.request.post(`${api}/reassessments`, {
+    data: {
+      title: "Archived target check",
+      dueAt: "2020-11-21T14:00:00.000Z",
+      studentIssueIds: [anIssue, binhIssue],
+      clientRequestId: randomUUID(),
+    },
+  }));
+  expect(scheduled.version).toBe(1);
+
+  const archiveRes = await page.request.post(`${api}/students/${binh.id}/archive`, {
+    data: { expectedVersion: binh.version },
+  });
+  expect(archiveRes.status()).toBe(204);
+
+  const skipPayloads: Array<{ expectedVersion: number; skipReason: string }> = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith(`/targets/${binhIssue}/skip`) && request.method() === "POST") {
+      skipPayloads.push(request.postDataJSON() as { expectedVersion: number; skipReason: string });
+    }
+  });
+
+  await page.goto("/");
+  const due = page.getByRole("region", { name: "Due", exact: true });
+  const card = due.getByRole("article", { name: "Archived target check" });
+  await expect(card).toBeVisible();
+
+  const affected = card.getByRole("list", { name: "Affected students" });
+  const anTarget = affected.getByRole("listitem").filter({ has: page.getByRole("link", { name: "An", exact: true }) });
+  const binhTarget = affected.getByRole("listitem").filter({ has: page.getByRole("link", { name: "Bình", exact: true }) });
+  await expect(anTarget).toBeVisible();
+  await expect(binhTarget).toBeVisible();
+  await expect(anTarget).not.toContainText("Archived");
+  await expect(anTarget.getByRole("button", { name: "Skip target" })).toHaveCount(0);
+  await expect(binhTarget).toContainText("Archived");
+
+  await binhTarget.getByRole("button", { name: "Skip target" }).click();
+  await expect.poll(() => skipPayloads.length).toBe(1);
+  expect(skipPayloads).toEqual([{ expectedVersion: 1, skipReason: "Student archived" }]);
+
+  await expect(binhTarget).toContainText("Skipped");
+  await expect(binhTarget).toContainText("Student archived");
+  await expect(binhTarget.getByRole("button", { name: "Skip target" })).toHaveCount(0);
+  await expect(anTarget).not.toContainText("Skipped");
+  await expect(card).toBeVisible();
+
+  const afterSkip = await body<ReassessmentDto>(await page.request.get(`${api}/reassessments/${scheduled.id}`));
+  expect(afterSkip).toMatchObject({ status: "SCHEDULED", version: 2, completedAt: null });
+
+  await card.getByRole("button", { name: "Record outcome" }).click();
+  const outcome = page.getByRole("region", { name: "Outcome note" });
+  await expect(outcome.getByText("Awaiting evidence for An.")).toBeVisible();
+  await outcome.getByLabel("What happened during the reassessment?").fill(notes.archivedTargetOutcome);
+  await outcome.getByLabel(/Observed at/).fill("2020-11-22T14:00");
+  await outcome.getByRole("button", { name: "Save outcome note" }).click();
+
+  const reviewLink = page.getByRole("region", { name: "Recent captures" })
+    .getByRole("listitem").filter({ hasText: notes.archivedTargetOutcome })
+    .getByRole("link", { name: "Review proposal" });
+  await reviewLink.click();
+  await page.getByRole("article", { name: "Evidence · An", exact: true })
+    .getByRole("button", { name: "Approve", exact: true }).click();
+  await page.getByRole("button", { name: "Apply reviewed changes" }).click();
+  await expect(page.getByRole("status", { name: "Review result" })).toHaveText("Reviewed changes applied.");
+
+  await page.getByRole("link", { name: "TutorLoop" }).click();
+  await expect(page.getByRole("region", { name: "Needs results", exact: true })
+    .getByText("No reassessments need results.")).toBeVisible();
+
+  const detailAfter = await body<CanonicalIssueDetailDto>(await page.request.get(issueApi));
+  expect(detailAfter.reassessments[0]).toMatchObject({
+    id: scheduled.id,
+    status: "COMPLETED",
+  });
+  const byIssue = new Map(detailAfter.reassessments[0].targets.map((t) => [t.studentIssueId, t]));
+  expect(byIssue.get(anIssue)).toMatchObject({ targetStatus: "EVIDENCED", skipReason: null });
+  expect(byIssue.get(binhIssue)).toMatchObject({ targetStatus: "SKIPPED", skipReason: "Student archived" });
+});
+
+test("archived reassessment target: refreshes authoritative queue and surfaces stale-version error on skip", async ({ baseURL, page }) => {
+  test.setTimeout(60_000);
+  if (!baseURL) throw new Error("Set the Playwright baseURL.");
+  await page.context().addCookies([{ name: "tutorloop-e2e", value: `capture-${randomUUID()}`, url: baseURL }]);
+  const classroom = await body<ClassDto>(await page.request.post("/api/v1/classes", {
+    data: { name: "Stale skip class", timezone: "Asia/Bangkok", clientRequestId: randomUUID() },
+  }));
+  const classPath = `/classes/${classroom.id}`;
+  const api = `/api/v1${classPath}`;
+  const an = await body<StudentDto>(await page.request.post(`${api}/students`, {
+    data: { displayLabel: "An", clientRequestId: randomUUID() },
+  }));
+  const binh = await body<StudentDto>(await page.request.post(`${api}/students`, {
+    data: { displayLabel: "Bình", clientRequestId: randomUUID() },
+  }));
+
+  const capture = await body<CreateRawNoteResponse>(await page.request.post(`${api}/raw-notes`, {
+    data: { body: notes.projection, observedAt: "2020-11-20T07:00:00.000Z", noteType: "OBSERVATION", clientRequestId: randomUUID() },
+  }));
+  let runPath = "";
+  await expect.poll(async () => {
+    const { processing } = await body<RawNoteDetailDto>(await page.request.get(`${api}/raw-notes/${capture.rawNote.id}`));
+    if (processing.status === "READY") runPath = `${api}/proposal-runs/${processing.proposalRunId}`;
+    return processing.status;
+  }).toBe("READY");
+  const run = await body<ProposalRunDetailDto>(await page.request.get(runPath));
+  await body(await page.request.post(`${runPath}/decisions`, {
+    data: {
+      clientRequestId: randomUUID(),
+      items: run.items.map(({ id, originalPayload }) => ({
+        proposalItemId: id, decision: originalPayload.key === "rejected-observation" ? "REJECT" : "APPROVE",
+      })),
+    },
+  }));
+
+  const [canonical] = await body<CanonicalIssueSummaryDto[]>(await page.request.get(`${api}/issues`));
+  const detail = await body<CanonicalIssueDetailDto>(await page.request.get(`${api}/issues/${canonical.id}`));
+  const anIssue = detail.studentIssues.find(({ studentId }) => studentId === an.id)!.id;
+  const binhIssue = detail.studentIssues.find(({ studentId }) => studentId === binh.id)!.id;
+  const scheduled = await body<ReassessmentDto>(await page.request.post(`${api}/reassessments`, {
+    data: {
+      title: "Stale skip check",
+      dueAt: "2020-11-21T14:00:00.000Z",
+      studentIssueIds: [anIssue, binhIssue],
+      clientRequestId: randomUUID(),
+    },
+  }));
+  expect((await page.request.post(`${api}/students/${binh.id}/archive`, {
+    data: { expectedVersion: binh.version },
+  })).status()).toBe(204);
+
+  await page.goto("/");
+  const due = page.getByRole("region", { name: "Due", exact: true });
+  const needs = page.getByRole("region", { name: "Needs results", exact: true });
+  const dueCard = due.getByRole("article", { name: "Stale skip check" });
+  await expect(dueCard).toBeVisible();
+
+  await body(await page.request.post(`${api}/reassessments/${scheduled.id}/mark-performed`, {
+    data: { expectedVersion: 1 },
+  }));
+
+  await dueCard.getByRole("button", { name: "Skip target" }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  const needsCard = needs.getByRole("article", { name: "Stale skip check" });
+  await expect(needsCard).toBeVisible();
+  const binhRow = needsCard.getByRole("list", { name: "Affected students" })
+    .getByRole("listitem").filter({ has: page.getByRole("link", { name: "Bình", exact: true }) });
+  await expect(binhRow).toContainText("Archived");
+  await binhRow.getByRole("button", { name: "Skip target" }).click();
+  await expect(binhRow).toContainText("Skipped");
+  await expect(binhRow).toContainText("Student archived");
+});

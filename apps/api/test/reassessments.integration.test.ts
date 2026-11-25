@@ -121,7 +121,7 @@ test("includes the exact due boundary and presents the root issue, Students, and
     targets: expect.arrayContaining(students.map((student, index) => expect.objectContaining({
       studentIssueId: issueIds[index],
       targetStatus: "PENDING",
-      student: { id: student.id, displayLabel: student.display_label },
+      student: { id: student.id, displayLabel: student.display_label, archivedAt: null },
       canonicalIssue: { id: root.id, label: root.label },
       intervention: index === 0 ? intervention : null,
     }))),
@@ -325,8 +325,12 @@ test("rejects new Reassessments targeting an archived Student or mixed batch whi
 
   clock = new Date(dueAt);
   const queue = reassessmentDueQueueDtoSchema.parse(await read(`${reassessmentsUrl(classroom.id)}/due`));
-  expect(queue.due.find(({ id }) => id === existing.id)?.targets.map(({ student }) => student.id).sort())
+  const queuedExisting = queue.due.find(({ id }) => id === existing.id);
+  expect(queuedExisting?.targets.map(({ student }) => student.id).sort())
     .toEqual([active!.id, archived!.id].sort());
+  expect(queuedExisting?.targets.find(({ student }) => student.id === active!.id)?.student.archivedAt).toBeNull();
+  expect(queuedExisting?.targets.find(({ student }) => student.id === archived!.id)?.student.archivedAt)
+    .toEqual(expect.any(String));
   expect(studentOverviewDtoSchema.parse(await read(`${classUrl(classroom.id)}/students/${archived!.id}/overview`)).reassessments)
     .toEqual([existing]);
 });

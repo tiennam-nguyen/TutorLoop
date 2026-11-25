@@ -189,6 +189,16 @@ export function createReassessmentOutcomeNote(classId: string, reassessmentId: s
   return read(`${reassessmentPath(classId, reassessmentId)}/outcome-note`, createRawNoteResponseSchema, json("POST", input));
 }
 
+export function skipReassessmentTarget(
+  classId: string, reassessmentId: string, studentIssueId: string, expectedVersion: number, skipReason: string,
+) {
+  return read(
+    `${reassessmentPath(classId, reassessmentId)}/targets/${encodeURIComponent(studentIssueId)}/skip`,
+    reassessmentDtoSchema,
+    json("POST", { expectedVersion, skipReason }),
+  );
+}
+
 
 export function updateCanonicalIssue(classId: string, issueId: string, input: UpdateCanonicalIssueInput) {
   return read(`${classPath(classId)}/canonical-issues/${encodeURIComponent(issueId)}`, canonicalIssueDtoSchema, json("PATCH", input));

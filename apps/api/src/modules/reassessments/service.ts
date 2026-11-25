@@ -142,7 +142,7 @@ export function getReassessmentDueQueue(
           const issue = byIssue.get(target.studentIssueId)!;
           return {
             ...target, canonicalIssue: { id: issue.canonical_id, label: issue.canonical_label },
-            student: { id: issue.student_id, displayLabel: issue.display_label },
+            student: { id: issue.student_id, displayLabel: issue.display_label, archivedAt: issue.archived_at?.toISOString() ?? null },
             intervention: target.interventionId ? byIntervention.get(target.interventionId)! : null,
           };
         }),

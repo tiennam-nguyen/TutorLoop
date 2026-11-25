@@ -61,7 +61,9 @@ export type ReassessmentDto = z.infer<typeof reassessmentDtoSchema>;
 
 const namedClassSchema = z.object({ id: idSchema, name: nonblankTextSchema });
 const namedCanonicalIssueSchema = z.object({ id: idSchema, label: nonblankTextSchema });
-const namedStudentSchema = z.object({ id: idSchema, displayLabel: nonblankTextSchema });
+const namedStudentSchema = z.object({
+  id: idSchema, displayLabel: nonblankTextSchema, archivedAt: timestampSchema.nullable(),
+});
 
 const dueReassessmentTargetSchema = reassessmentTargetDtoSchema.extend({
   canonicalIssue: namedCanonicalIssueSchema,

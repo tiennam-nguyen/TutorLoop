@@ -13,6 +13,7 @@ export const notes = {
   followUp: "An nhớ đổi dấu ở bước đầu nhưng vẫn sai ở bước cuối.",
   retry: "An cần ghi lại bài kiểm tra về dấu.",
   reassessmentOutcome: "An tự đổi dấu đúng. Bình làm đúng sau khi được nhắc.",
+  archivedTargetOutcome: "An completed the sign recheck independently.",
   recurrence: "Ở bài sau, An lại quên đổi dấu khi chuyển vế.",
 };
 
@@ -161,6 +162,16 @@ export function captureFixtures(signal: AbortSignal) {
             },
           ];
         }));
+      case notes.archivedTargetOutcome: {
+        const student = input.students.find(({ displayLabel }) => displayLabel === "An");
+        const issue = input.studentIssues.find(({ studentId }) => studentId === student?.studentId);
+        if (!issue) throw new Error("Missing archived-target outcome issue for An");
+        return draft([{
+          key: "An-outcome", type: "CREATE_EVIDENCE", studentRef: resolved("An"),
+          studentIssueRef: { kind: "EXISTING", studentIssueId: issue.studentIssueId },
+          observationText: notes.archivedTargetOutcome,
+        }]);
+      }
       default:
         throw new Error("No structuring fixture for this note");
     }
