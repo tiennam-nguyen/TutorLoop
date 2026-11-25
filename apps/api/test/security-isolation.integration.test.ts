@@ -274,6 +274,7 @@ test("owning-teacher controls exercise merge, outcome-note, target skip, and all
   const root = path(f.classroom.id);
   const target = buildCanonicalIssue(f.classroom.id);
   await db.insertInto("canonical_issues").values(target).execute();
+  let createdReassessmentId = "";
   for (const operation of [
     { url: `${root}/students`, payload: { displayLabel: "Synthetic learner", clientRequestId: randomUUID() } },
     { url: `${root}/raw-notes`, payload: {
@@ -288,12 +289,16 @@ test("owning-teacher controls exercise merge, outcome-note, target skip, and all
   ] as const) {
     const response = await app.inject({ method: "POST", ...operation });
     expect(response.statusCode, `${operation.url}: ${response.body}`).toBe(201);
+    if (operation.url.endsWith("/reassessments")) {
+      createdReassessmentId = response.json<{ id: string }>().id;
+    }
   }
   const merged = await app.inject({ method: "POST", url: `${root}/canonical-issues/${f.canonical.id}/merge`, payload: {
     targetCanonicalIssueId: target.id, expectedSourceVersion: 1, expectedTargetVersion: 1,
   } });
   expect(merged.statusCode, merged.body).toBe(200);
-  const performed = await app.inject({ method: "POST", url: `${root}/reassessments/${f.reassessment}/mark-performed`,
+  // outcome-note promotes f.reassessment to v2 PERFORMED_PENDING_EVIDENCE; mark-performed exercises a fresh v1 SCHEDULED record
+  const performed = await app.inject({ method: "POST", url: `${root}/reassessments/${createdReassessmentId}/mark-performed`,
     payload: { expectedVersion: 1 } });
   expect(performed.statusCode, performed.body).toBe(200);
   const skipped = await app.inject({ method: "POST", url: `${root}/reassessments/${f.reassessment}/targets/${f.issue}/skip`,
