@@ -202,7 +202,7 @@ test("one outcome saves conflicting evidence for different students and complete
   const run = await structure(note.processing.jobId, [
     evidence(an, "an-evidence", "An worked independently on every question."),
     { key: "an-resolve", type: "TRANSITION_STUDENT_ISSUE", toState: "RESOLVED_FOR_NOW", expectedVersion: 1,
-      studentIssueRef: { kind: "EXISTING", studentIssueId: an.id } },
+      studentIssueRef: { kind: "EXISTING", studentIssueId: an.id }, supportingEvidenceKey: "an-evidence" },
     evidence(binh, "binh-evidence", "Bình still made denominator errors."),
   ]);
 

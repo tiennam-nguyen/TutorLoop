@@ -9,7 +9,7 @@ import { pseudonymizeNote } from "../pseudonymize.ts";
 import { AI_MODEL_REGISTRY } from "../registry.ts";
 import { AIProcessingError, createConfiguredCandidateRouter, providerCredentialName } from "../router.ts";
 import { evaluateDraft } from "./score.ts";
-import { SCENARIOS, type BenchmarkCase, type CandidateResult, type CaseResult } from "./types.ts";
+import { SCENARIOS, type BenchmarkCase, type BenchmarkRevision, type CandidateResult, type CaseResult } from "./types.ts";
 import { writeReport } from "./report.ts";
 
 const PINNED_MODELS = {
@@ -22,14 +22,14 @@ const PINNED_MODELS = {
 function validateCandidates(): void {
   if (AI_MODEL_REGISTRY.length !== Object.keys(PINNED_MODELS).length ||
       new Set(AI_MODEL_REGISTRY.map(({ provider }) => provider)).size !== AI_MODEL_REGISTRY.length) {
-    throw new Error("Benchmark v1 requires exactly four distinct pinned providers.");
+    throw new Error("Benchmark requires exactly four distinct pinned providers.");
   }
   for (const candidate of AI_MODEL_REGISTRY) {
     const [model, transport, mode] = PINNED_MODELS[candidate.provider];
     if (candidate.model !== model || candidate.transport !== transport || candidate.structuredOutputMode !== mode ||
         !Number.isSafeInteger(candidate.timeoutMs) || candidate.timeoutMs <= 0 ||
         !Number.isSafeInteger(candidate.maxRetries) || candidate.maxRetries < 0) {
-      throw new Error(`Invalid benchmark v1 route for ${candidate.provider}.`);
+      throw new Error(`Invalid benchmark route for ${candidate.provider}.`);
     }
   }
 }
@@ -111,10 +111,12 @@ function validExpectations(row: BenchmarkCase): boolean {
   return evaluateDraft(row, expected).fraction === 1;
 }
 
-export function validateDataset(value: unknown): { revision: "v1"; cases: BenchmarkCase[] } {
+export function validateDataset(
+  value: unknown, expectedRevision: BenchmarkRevision = "v2",
+): { revision: BenchmarkRevision; cases: BenchmarkCase[] } {
   const data = asObject(value);
-  if (data?.revision !== "v1" || !Array.isArray(data.cases) || data.cases.length !== 32) {
-    throw new Error("Benchmark v1 requires exactly 32 cases.");
+  if (data?.revision !== expectedRevision || !Array.isArray(data.cases) || data.cases.length !== 32) {
+    throw new Error(`Benchmark ${expectedRevision} requires exactly 32 cases.`);
   }
   const rows: BenchmarkCase[] = [];
   const scenarios = new Set<string>(SCENARIOS);
@@ -137,15 +139,15 @@ export function validateDataset(value: unknown): { revision: "v1"; cases: Benchm
   }
   for (const scenario of SCENARIOS) {
     if (rows.filter((row) => row.scenario === scenario).length !== 2) {
-      throw new Error(`Benchmark v1 requires two cases for ${scenario}.`);
+      throw new Error(`Benchmark ${expectedRevision} requires two cases for ${scenario}.`);
     }
   }
-  return { revision: "v1", cases: rows };
+  return { revision: expectedRevision, cases: rows };
 }
 
-export async function loadDataset() {
-  const data = await readFile(new URL("./cases.v1.json", import.meta.url));
-  return { ...validateDataset(JSON.parse(data.toString("utf8"))), sha256: createHash("sha256").update(data).digest("hex") };
+export async function loadDataset(revision: BenchmarkRevision = "v2") {
+  const data = await readFile(new URL(`./cases.${revision}.json`, import.meta.url));
+  return { ...validateDataset(JSON.parse(data.toString("utf8")), revision), sha256: createHash("sha256").update(data).digest("hex") };
 }
 
 export async function runBenchmark(

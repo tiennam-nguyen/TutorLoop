@@ -96,8 +96,13 @@ function matchingItems(row: BenchmarkCase, draft: ProposalDraftV1) {
     }
     if (expected.type === "CREATE_EVIDENCE" && actual.type === "CREATE_EVIDENCE" &&
         expected.observedAt !== actual.observedAt) return false;
-    if (expected.type === "TRANSITION_STUDENT_ISSUE" && actual.type === "TRANSITION_STUDENT_ISSUE" &&
-        expected.toState !== actual.toState) return false;
+    if (expected.type === "TRANSITION_STUDENT_ISSUE" && actual.type === "TRANSITION_STUDENT_ISSUE") {
+      if (expected.toState !== actual.toState) return false;
+      if (expected.supportingEvidenceKey &&
+        (!actual.supportingEvidenceKey || !proposedMatch(expected.supportingEvidenceKey, actual.supportingEvidenceKey))) {
+        return false;
+      }
+    }
     if ("expectedVersion" in expected && (!("expectedVersion" in actual) || expected.expectedVersion !== actual.expectedVersion)) {
       return false;
     }

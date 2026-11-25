@@ -322,7 +322,7 @@ test("persists sanitized retries and fallback, restores local refs, and keeps th
       }, {
         key: "transition", type: "TRANSITION_STUDENT_ISSUE",
         studentIssueRef: { kind: "EXISTING", studentIssueId: "SI_001" },
-        expectedVersion: 1, toState: "IMPROVING", reason: null,
+        expectedVersion: 1, toState: "IMPROVING", reason: null, supportingEvidenceKey: "evidence",
       }],
     }) } }] });
   };
@@ -337,6 +337,12 @@ test("persists sanitized retries and fallback, restores local refs, and keeps th
     }) }),
     expect.objectContaining({ item_type: "TRANSITION_STUDENT_ISSUE", target_entity_id: studentIssueId, base_version: 1 }),
   ]));
+  const evidenceRow = items.find(({ item_type }) => item_type === "CREATE_EVIDENCE")!;
+  const transitionRow = items.find(({ item_type }) => item_type === "TRANSITION_STUDENT_ISSUE")!;
+  expect(await db.selectFrom("proposal_item_dependencies").selectAll()
+    .where("proposal_item_id", "=", transitionRow.id).execute()).toEqual([
+    { proposal_item_id: transitionRow.id, depends_on_item_id: evidenceRow.id },
+  ]);
   expect(requests.map(({ url }) => new URL(url).hostname)).toEqual([
     "generativelanguage.googleapis.com", "generativelanguage.googleapis.com", "api.groq.com",
   ]);
@@ -364,7 +370,7 @@ test("persists sanitized retries and fallback, restores local refs, and keeps th
   for (const row of rows) {
     expect(row).toMatchObject({
       class_id: classroom.id, proposal_run_id: run.id, task_type: "STRUCTURE_OBSERVATION_NOTE",
-      prompt_version: "structure-note-v2", schema_version: "1", redaction_version: "1",
+      prompt_version: "structure-note-v3", schema_version: "1", redaction_version: "1",
       input_hash: createHash("sha256").update(sent).digest("hex"), latency_ms: expect.any(Number), usage_json: null,
     });
   }

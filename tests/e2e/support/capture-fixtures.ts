@@ -115,7 +115,7 @@ export function captureFixtures(signal: AbortSignal) {
         return draft([
           { key: "an", type: "CREATE_EVIDENCE", studentRef: resolved("An"), studentIssueRef, observationText: notes.followUp },
           { key: "manifestation", type: "UPDATE_MANIFESTATION", studentIssueRef, expectedVersion: issue.version, manifestation: "Sai ở bước cuối." },
-          { key: "state", type: "TRANSITION_STUDENT_ISSUE", studentIssueRef, expectedVersion: issue.version, toState: "IMPROVING" },
+          { key: "state", type: "TRANSITION_STUDENT_ISSUE", studentIssueRef, expectedVersion: issue.version, toState: "IMPROVING", supportingEvidenceKey: "an" },
         ]);
       }
       case notes.retry: {
@@ -141,7 +141,7 @@ export function captureFixtures(signal: AbortSignal) {
         return draft([
           { key: "An-outcome", type: "CREATE_EVIDENCE", studentRef: resolved("An"), studentIssueRef,
             observationText: "An forgot to change the sign again." },
-          { key: "An-transition", type: "TRANSITION_STUDENT_ISSUE", studentIssueRef, expectedVersion: issue.version, toState: "OPEN" },
+          { key: "An-transition", type: "TRANSITION_STUDENT_ISSUE", studentIssueRef, expectedVersion: issue.version, toState: "OPEN", supportingEvidenceKey: "An-outcome" },
         ]);
       }
       case notes.reassessmentOutcome:
@@ -157,7 +157,7 @@ export function captureFixtures(signal: AbortSignal) {
             },
             {
               key: `${name}-transition`, type: "TRANSITION_STUDENT_ISSUE", studentIssueRef, expectedVersion: issue.version,
-              toState: name === "An" ? "RESOLVED_FOR_NOW" : "IMPROVING",
+              toState: name === "An" ? "RESOLVED_FOR_NOW" : "IMPROVING", supportingEvidenceKey: `${name}-outcome`,
             },
           ];
         }));

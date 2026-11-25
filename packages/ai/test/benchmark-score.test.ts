@@ -119,12 +119,47 @@ test("ties use a stable identifier and missing or failed candidates are ineligib
 
 test("the 32-gold-case corpus validates and rejects inconsistent expectations", async () => {
   const dataset = await loadDataset();
+  expect(dataset.revision).toBe("v2");
   expect(dataset.cases).toHaveLength(32);
   expect(new Set(dataset.cases.map(({ scenario }) => scenario)).size).toBe(16);
   for (const row of dataset.cases) expect(evaluateDraft(row, row.expected).fraction, row.id).toBe(1);
   const cases = structuredClone(dataset.cases);
   cases[0].expected.items[0] = { ...goodEvidence, studentRef: { kind: "RESOLVED", studentAlias: "not-on-roster" } };
-  expect(() => validateDataset({ revision: "v1", cases })).toThrow(/01-a/);
+  expect(() => validateDataset({ revision: "v2", cases })).toThrow(/01-a/);
+});
+
+test("scores supportingEvidenceKey links by resolved Evidence item rather than item key", async () => {
+  const { cases } = await loadDataset();
+  const row = cases.find(({ id }) => id === "11-a")!;
+  const renamed = {
+    schemaVersion: "1" as const,
+    items: row.expected.items.map((item) => {
+      if (item.type === "CREATE_EVIDENCE") return { ...item, key: `ev-${item.key}` };
+      if (item.type === "TRANSITION_STUDENT_ISSUE") {
+        return { ...item, key: `tr-${item.key}`, supportingEvidenceKey: `ev-${item.supportingEvidenceKey}` };
+      }
+      return item;
+    }),
+  };
+  expect(evaluateDraft(row, renamed).fraction).toBe(1);
+
+  const missingLink = {
+    schemaVersion: "1" as const,
+    items: renamed.items.map((item) =>
+      item.type === "TRANSITION_STUDENT_ISSUE" && item.key === "tr-tb"
+        ? { ...item, supportingEvidenceKey: undefined }
+        : item),
+  };
+  expect(evaluateDraft(row, missingLink).missingKeys).toContain("tb");
+
+  const wrongStudentLink = {
+    schemaVersion: "1" as const,
+    items: renamed.items.map((item) =>
+      item.type === "TRANSITION_STUDENT_ISSUE" && item.key === "tr-tb"
+        ? { ...item, supportingEvidenceKey: "ev-l" }
+        : item),
+  };
+  expect(evaluateDraft(row, wrongStudentLink).missingKeys).toContain("tb");
 });
 
 test("live execution keeps all retry attempts isolated and missing keys visible", async () => {

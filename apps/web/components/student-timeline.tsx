@@ -37,7 +37,9 @@ export function StudentTimeline({ overview, timeZone }: { overview: StudentOverv
   });
   return <section className="panel" id="timeline" aria-label="Timeline">
     <h2>Timeline</h2>
-    {events.length ? <ol className="timeline">{events.map((event) => <li key={`${event.kind}-${event.value.id}`}>
+    {events.length ? <ol className="timeline">{events.map((event) => <li
+      key={`${event.kind}-${event.value.id}`}
+      id={event.kind === "evidence" ? `evidence-${event.value.id}` : undefined}>
       {event.kind === "evidence" ? <EvidenceEntry evidence={event.value} timeZone={timeZone} /> : <>
         <time dateTime={event.at}>{formatObservedTime(event.at, timeZone)}</time>
         {event.kind === "intervention" && <>{" · Intervention: "}<span className="note-text">{event.value.description}</span></>}
@@ -51,6 +53,7 @@ export function StudentTimeline({ overview, timeZone }: { overview: StudentOverv
             event.value.toState === "IMPROVING" ? "Improving" : "Open"}
           {labels.get(event.value.studentIssueId) && ` · ${labels.get(event.value.studentIssueId)}`}
           {event.value.reason && ` · ${event.value.reason}`}
+          {event.value.evidenceEventId && <>{" · "}<a href={`#evidence-${event.value.evidenceEventId}`}>Supporting evidence</a></>}
         </>}
       </>}
     </li>)}</ol> : <p className="muted">No history yet.</p>}

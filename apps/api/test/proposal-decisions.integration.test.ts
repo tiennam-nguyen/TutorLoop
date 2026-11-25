@@ -107,11 +107,23 @@ function evidence(overrides: Partial<Extract<ProposalDraftItemV1, { type: "CREAT
   return { key: "evidence", type: "CREATE_EVIDENCE", studentRef, observationText: "Compared fractions", ...overrides };
 }
 
-function transition(studentIssueId: string, toState: StudentIssueState = "IMPROVING"): ProposalDraftItemV1 {
+function transition(
+  studentIssueId: string,
+  toState: StudentIssueState = "IMPROVING",
+  overrides: Partial<Extract<ProposalDraftItemV1, { type: "TRANSITION_STUDENT_ISSUE" }>> = {},
+): ProposalDraftItemV1 {
   return {
     key: "state", type: "TRANSITION_STUDENT_ISSUE", toState, expectedVersion: 1,
-    studentIssueRef: { kind: "EXISTING", studentIssueId },
+    studentIssueRef: { kind: "EXISTING", studentIssueId }, ...overrides,
   };
+}
+
+function linkedTransition(
+  studentIssueId: string,
+  toState: StudentIssueState = "IMPROVING",
+  overrides: Partial<Extract<ProposalDraftItemV1, { type: "TRANSITION_STUDENT_ISSUE" }>> = {},
+): ProposalDraftItemV1 {
+  return transition(studentIssueId, toState, { supportingEvidenceKey: "evidence", ...overrides });
 }
 
 function approve(proposalItemId: string): ProposalDecisionInput {
@@ -358,8 +370,9 @@ test("one client request ID replays the operation and conflicts on changed input
 test("stale concurrent runs roll back unrelated evidence and their decision records", async () => {
   const classId = await addClass();
   const issue = await addIssue(classId, await addStudent(classId));
-  const first = await addRun(classId, [evidence(), transition(issue.id)]);
-  const second = await addRun(classId, [evidence(), transition(issue.id)]);
+  const linkedEvidence = evidence({ studentIssueRef: { kind: "EXISTING", studentIssueId: issue.id } });
+  const first = await addRun(classId, [linkedEvidence, linkedTransition(issue.id)], [[1, 0]]);
+  const second = await addRun(classId, [linkedEvidence, linkedTransition(issue.id)], [[1, 0]]);
   const responses = await Promise.all([first, second].map((run) => decisions(run, run.ids.map(approve))));
   expect(responses.map(({ statusCode }) => statusCode).sort()).toEqual([200, 409]);
   const loser = responses[0].statusCode === 409 ? first : second;
@@ -375,12 +388,13 @@ test("manifestation and transition in the same batch can both use the original l
   const classId = await addClass();
   const issue = await addIssue(classId, await addStudent(classId));
   const run = await addRun(classId, [
+    evidence({ studentIssueRef: { kind: "EXISTING", studentIssueId: issue.id } }),
     {
       key: "manifestation", type: "UPDATE_MANIFESTATION", expectedVersion: 1, manifestation: "Less frequent",
       studentIssueRef: { kind: "EXISTING", studentIssueId: issue.id },
     },
-    transition(issue.id),
-  ]);
+    linkedTransition(issue.id),
+  ], [[2, 0]]);
   const response = await decisions(run, run.ids.map(approve));
   expect(response.statusCode, response.body).toBe(200);
   expect(await readIssue(issue.id)).toMatchObject({ manifestation: "Less frequent", state: "IMPROVING", version: 3 });
@@ -389,7 +403,10 @@ test("manifestation and transition in the same batch can both use the original l
 test("a patch cannot refresh a stale recorded base version", async () => {
   const classId = await addClass();
   const issue = await addIssue(classId, await addStudent(classId), "OPEN", 2);
-  const run = await addRun(classId, [evidence(), transition(issue.id)]);
+  const run = await addRun(classId, [
+    evidence({ studentIssueRef: { kind: "EXISTING", studentIssueId: issue.id } }),
+    linkedTransition(issue.id),
+  ], [[1, 0]]);
   const response = await decisions(run, [approve(run.ids[0]), edit(run.ids[1], { expectedVersion: 2 })]);
   expect(response.statusCode, response.body).toBe(409);
   expect(response.json().error.code).toBe("STALE_VERSION");
@@ -494,15 +511,19 @@ test("reopening a resolved issue appends a transition and leaves earlier history
   });
   expect(resolved.statusCode, resolved.body).toBe(200);
   expect(studentIssueDtoSchema.parse(resolved.json())).toMatchObject({ version: 2, state: "RESOLVED_FOR_NOW" });
-  const run = await addRun(classId, [{ ...transition(issue.id, "OPEN"), expectedVersion: 2 } as ProposalDraftItemV1]);
-  const reopened = await decisions(run, [approve(run.ids[0])]);
+  const run = await addRun(classId, [
+    evidence({ studentIssueRef: { kind: "EXISTING", studentIssueId: issue.id } }),
+    linkedTransition(issue.id, "OPEN", { expectedVersion: 2 }),
+  ], [[1, 0]]);
+  const reopened = await decisions(run, [approve(run.ids[0]), approve(run.ids[1])]);
   expect(reopened.statusCode, reopened.body).toBe(200);
+  const detail = proposalRunDetailDtoSchema.parse(reopened.json());
   expect(await readIssue(issue.id)).toMatchObject({ state: "OPEN", version: 3 });
   const history = await db.selectFrom("student_issue_transitions").selectAll().where("student_issue_id", "=", issue.id)
     .orderBy("created_at").execute();
   expect(history).toMatchObject([
-    { from_state: "OPEN", to_state: "RESOLVED_FOR_NOW", proposal_item_id: null, reason: "Correct on recheck", actor_user_id: teacherId },
-    { from_state: "RESOLVED_FOR_NOW", to_state: "OPEN", proposal_item_id: run.ids[0], actor_user_id: teacherId },
+    { from_state: "OPEN", to_state: "RESOLVED_FOR_NOW", proposal_item_id: null, evidence_event_id: null, reason: "Correct on recheck", actor_user_id: teacherId },
+    { from_state: "RESOLVED_FOR_NOW", to_state: "OPEN", proposal_item_id: run.ids[1], evidence_event_id: detail.items[0].resultEntityId, actor_user_id: teacherId },
   ]);
 });
 
@@ -511,9 +532,10 @@ test("Student overview preserves the application order of two transitions from o
   const studentId = await addStudent(classId);
   const issue = await addIssue(classId, studentId);
   const run = await addRun(classId, [
-    { ...transition(issue.id, "IMPROVING"), key: "improve" },
-    { ...transition(issue.id, "RESOLVED_FOR_NOW"), key: "resolve" },
-  ], [[1, 0]]);
+    evidence({ studentIssueRef: { kind: "EXISTING", studentIssueId: issue.id } }),
+    linkedTransition(issue.id, "IMPROVING", { key: "improve" }),
+    linkedTransition(issue.id, "RESOLVED_FOR_NOW", { key: "resolve" }),
+  ], [[1, 0], [2, 0], [2, 1]]);
   const firstId = "00000000-0000-4000-8000-000000000002";
   const secondId = "00000000-0000-4000-8000-000000000001";
   await sql`
@@ -528,7 +550,7 @@ test("Student overview preserves the application order of two transitions from o
       FOR EACH ROW EXECUTE FUNCTION use_reverse_transition_ids();
   `.execute(db);
   try {
-    const applied = await decisions(run, [approve(run.ids[1]), approve(run.ids[0])]);
+    const applied = await decisions(run, [approve(run.ids[2]), approve(run.ids[1]), approve(run.ids[0])]);
     expect(applied.statusCode, applied.body).toBe(200);
   } finally {
     await sql`
@@ -600,4 +622,152 @@ test("requires authentication and Class ownership on review and direct edits", a
     await anonymous.close();
   }
   expect(await db.selectFrom("product_events").select("id").where("class_id", "in", [foreignClass, owned]).execute()).toEqual([]);
+});
+
+test("transitions without a valid persisted Evidence dependency fail approval atomically while remaining readable and rejectable", async () => {
+  const classId = await addClass();
+  const studentId = await addStudent(classId);
+  const issue = await addIssue(classId, studentId);
+
+  const legacy = await addRun(classId, [transition(issue.id)]);
+  expect((await app.inject(legacy.url)).statusCode).toBe(200);
+  const legacyApprove = await decisions(legacy, [approve(legacy.ids[0])]);
+  expect(legacyApprove.statusCode, legacyApprove.body).toBe(422);
+  expect(legacyApprove.json().error.code).toBe("PROPOSAL_DEPENDENCY_UNSATISFIED");
+  expect(await readIssue(issue.id)).toMatchObject({ state: "OPEN", version: 1 });
+  expect(await db.selectFrom("student_issue_transitions").select("id").where("class_id", "=", classId).execute()).toEqual([]);
+  const legacyReject = await decisions(legacy, [reject(legacy.ids[0])]);
+  expect(legacyReject.statusCode, legacyReject.body).toBe(200);
+  expect(proposalRunDetailDtoSchema.parse(legacyReject.json()).status).toBe("APPLIED");
+
+  const missingDepEdge = await addRun(classId, [
+    evidence({ studentIssueRef: { kind: "EXISTING", studentIssueId: issue.id } }),
+    linkedTransition(issue.id),
+  ]);
+  const missingEdgeApprove = await decisions(missingDepEdge, [approve(missingDepEdge.ids[0]), approve(missingDepEdge.ids[1])]);
+  expect(missingEdgeApprove.statusCode, missingEdgeApprove.body).toBe(422);
+  expect(missingEdgeApprove.json().error.code).toBe("PROPOSAL_DEPENDENCY_UNSATISFIED");
+  expect(await readEvidence(classId)).toEqual([]);
+  expect(await readIssue(issue.id)).toMatchObject({ state: "OPEN", version: 1 });
+
+  const nonEvidenceDep = await addRun(classId, [
+    { key: "manifestation", type: "UPDATE_MANIFESTATION", expectedVersion: 1, manifestation: "Updated",
+      studentIssueRef: { kind: "EXISTING", studentIssueId: issue.id } },
+    transition(issue.id, "IMPROVING", { supportingEvidenceKey: "manifestation" }),
+  ], [[1, 0]]);
+  const nonEvidenceApprove = await decisions(nonEvidenceDep, [approve(nonEvidenceDep.ids[0]), approve(nonEvidenceDep.ids[1])]);
+  expect(nonEvidenceApprove.statusCode, nonEvidenceApprove.body).toBe(422);
+  expect(nonEvidenceApprove.json().error.code).toBe("PROPOSAL_DEPENDENCY_UNSATISFIED");
+  expect(await readIssue(issue.id)).toMatchObject({ state: "OPEN", version: 1, manifestation: "Initial" });
+});
+
+test("approving Evidence + transition writes exact evidence_event_id; rejecting Evidence rolls back; rejecting transition preserves Evidence", async () => {
+  const classId = await addClass();
+  const studentId = await addStudent(classId);
+  const issue = await addIssue(classId, studentId);
+
+  const rejectedEvidenceRun = await addRun(classId, [
+    evidence({ studentIssueRef: { kind: "EXISTING", studentIssueId: issue.id } }),
+    linkedTransition(issue.id),
+  ], [[1, 0]]);
+  const rejectedEvidenceBatch = await decisions(rejectedEvidenceRun, [
+    reject(rejectedEvidenceRun.ids[0]), approve(rejectedEvidenceRun.ids[1]),
+  ]);
+  expect(rejectedEvidenceBatch.statusCode, rejectedEvidenceBatch.body).toBe(422);
+  expect(rejectedEvidenceBatch.json().error.code).toBe("PROPOSAL_DEPENDENCY_UNSATISFIED");
+  expect(await readEvidence(classId)).toEqual([]);
+  expect(await readIssue(issue.id)).toMatchObject({ state: "OPEN", version: 1 });
+  expect((await app.inject(rejectedEvidenceRun.url)).json()).toMatchObject({
+    status: "READY", items: [{ status: "PENDING" }, { status: "PENDING" }],
+  });
+
+  const rejectedTransitionRun = await addRun(classId, [
+    evidence({ studentIssueRef: { kind: "EXISTING", studentIssueId: issue.id } }),
+    linkedTransition(issue.id),
+  ], [[1, 0]]);
+  const rejectedTransitionBatch = await decisions(rejectedTransitionRun, [
+    approve(rejectedTransitionRun.ids[0]), reject(rejectedTransitionRun.ids[1]),
+  ]);
+  expect(rejectedTransitionBatch.statusCode, rejectedTransitionBatch.body).toBe(200);
+  const preservedEvidenceId = proposalRunDetailDtoSchema.parse(rejectedTransitionBatch.json()).items[0].resultEntityId!;
+  expect(await readIssue(issue.id)).toMatchObject({ state: "OPEN", version: 1 });
+  expect(await db.selectFrom("student_issue_transitions").select("id").where("class_id", "=", classId).execute()).toEqual([]);
+
+  const approvedRun = await addRun(classId, [
+    evidence({ studentIssueRef: { kind: "EXISTING", studentIssueId: issue.id } }),
+    linkedTransition(issue.id),
+  ], [[1, 0]]);
+  const approvedBatch = await decisions(approvedRun, [approve(approvedRun.ids[0]), approve(approvedRun.ids[1])]);
+  expect(approvedBatch.statusCode, approvedBatch.body).toBe(200);
+  const approvedEvidenceId = proposalRunDetailDtoSchema.parse(approvedBatch.json()).items[0].resultEntityId!;
+  expect(approvedEvidenceId).not.toBe(preservedEvidenceId);
+  const transitions = await db.selectFrom("student_issue_transitions").selectAll().where("student_issue_id", "=", issue.id).execute();
+  expect(transitions).toMatchObject([{
+    student_issue_id: issue.id, from_state: "OPEN", to_state: "IMPROVING",
+    evidence_event_id: approvedEvidenceId, proposal_item_id: approvedRun.ids[1],
+  }]);
+  const overview = studentOverviewDtoSchema.parse((await app.inject(`/api/v1/classes/${classId}/students/${studentId}/overview`)).json());
+  expect(overview.transitions).toMatchObject([{ id: transitions[0].id, evidenceEventId: approvedEvidenceId }]);
+});
+
+test("rejects approving a transition when supporting Evidence targets no issue or a different StudentIssue", async () => {
+  const classId = await addClass();
+  const studentId = await addStudent(classId);
+  const issue = await addIssue(classId, studentId);
+  const otherIssue = await addIssue(classId, studentId);
+
+  for (const ev of [
+    evidence(),
+    evidence({ studentIssueRef: { kind: "EXISTING", studentIssueId: otherIssue.id } }),
+  ]) {
+    const run = await addRun(classId, [ev, linkedTransition(issue.id)], [[1, 0]]);
+    const response = await decisions(run, [approve(run.ids[0]), approve(run.ids[1])]);
+    expect(response.statusCode, response.body).toBe(422);
+    expect(response.json().error.code).toBe("PROPOSAL_DEPENDENCY_UNSATISFIED");
+  }
+  expect(await readEvidence(classId)).toEqual([]);
+  expect(await readIssue(issue.id)).toMatchObject({ state: "OPEN", version: 1 });
+  expect(await readIssue(otherIssue.id)).toMatchObject({ state: "OPEN", version: 1 });
+});
+
+test("previously approved supporting Evidence satisfies a later partial-review transition and proposed issue chain", async () => {
+  const classId = await addClass();
+  const studentId = await addStudent(classId);
+  const issue = await addIssue(classId, studentId);
+
+  const existingIssueRun = await addRun(classId, [
+    evidence({ studentIssueRef: { kind: "EXISTING", studentIssueId: issue.id } }),
+    linkedTransition(issue.id),
+  ], [[1, 0]]);
+  const firstBatch = await decisions(existingIssueRun, [approve(existingIssueRun.ids[0])]);
+  expect(firstBatch.statusCode, firstBatch.body).toBe(200);
+  const partialDetail = proposalRunDetailDtoSchema.parse(firstBatch.json());
+  expect(partialDetail.status).toBe("PARTIALLY_REVIEWED");
+  const priorEvidenceId = partialDetail.items[0].resultEntityId!;
+
+  const secondBatch = await decisions(existingIssueRun, [approve(existingIssueRun.ids[1])]);
+  expect(secondBatch.statusCode, secondBatch.body).toBe(200);
+  expect(await db.selectFrom("student_issue_transitions").selectAll().where("student_issue_id", "=", issue.id).execute())
+    .toMatchObject([{ from_state: "OPEN", to_state: "IMPROVING", evidence_event_id: priorEvidenceId }]);
+
+  const canonical = buildCanonicalIssue(classId);
+  await db.insertInto("canonical_issues").values(canonical).execute();
+  const proposedChainRun = await addRun(classId, [
+    { key: "s", type: "CREATE_STUDENT_ISSUE", studentRef, canonicalIssueRef: { kind: "EXISTING", canonicalIssueId: canonical.id } },
+    evidence({ studentIssueRef: { kind: "PROPOSED", proposalKey: "s" } }),
+    {
+      key: "state", type: "TRANSITION_STUDENT_ISSUE", toState: "IMPROVING", expectedVersion: 1,
+      studentIssueRef: { kind: "PROPOSED", proposalKey: "s" }, supportingEvidenceKey: "evidence",
+    },
+  ], [[1, 0], [2, 1]]);
+  const chainFirst = await decisions(proposedChainRun, [approve(proposedChainRun.ids[0]), approve(proposedChainRun.ids[1])]);
+  expect(chainFirst.statusCode, chainFirst.body).toBe(200);
+  const chainPartial = proposalRunDetailDtoSchema.parse(chainFirst.json());
+  const createdIssueId = chainPartial.items[0].resultEntityId!;
+  const createdEvidenceId = chainPartial.items[1].resultEntityId!;
+  const chainSecond = await decisions(proposedChainRun, [approve(proposedChainRun.ids[2])]);
+  expect(chainSecond.statusCode, chainSecond.body).toBe(200);
+  expect(await readIssue(createdIssueId)).toMatchObject({ state: "IMPROVING", version: 2 });
+  expect(await db.selectFrom("student_issue_transitions").selectAll().where("student_issue_id", "=", createdIssueId).execute())
+    .toMatchObject([{ from_state: "OPEN", to_state: "IMPROVING", evidence_event_id: createdEvidenceId }]);
 });

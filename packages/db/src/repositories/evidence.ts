@@ -15,6 +15,11 @@ export function insertProposalEvidence(db: Transaction<Database>, values: Propos
     .returning("id").executeTakeFirstOrThrow();
 }
 
+export function findEvidenceEvent(db: Kysely<Database>, classId: string, id: string) {
+  return db.selectFrom("evidence_events").select(["id", "student_id", "student_issue_id"])
+    .where("class_id", "=", classId).where("id", "=", id).executeTakeFirst();
+}
+
 export function listRecentIssueEvidence(
   db: Kysely<Database>, classId: string, issueIds: string[], cutoff?: Expression<Date>,
 ) {

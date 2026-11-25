@@ -56,12 +56,21 @@ describe("ProposalDraftV1", () => {
         {
           type: "TRANSITION_STUDENT_ISSUE", key: "transition",
           studentIssueRef: { kind: "PROPOSED", proposalKey: "student-issue" },
-          expectedVersion: 1, toState: "IMPROVING",
+          expectedVersion: 1, toState: "IMPROVING", supportingEvidenceKey: "evidence-1",
         },
         { ...evidence, studentIssueRef: null, learningContext: null },
       ],
     };
     expect(proposalDraftV1Schema.parse(draft)).toEqual(draft);
+    const legacy = {
+      schemaVersion: "1",
+      items: [{
+        type: "TRANSITION_STUDENT_ISSUE", key: "transition",
+        studentIssueRef: { kind: "EXISTING", studentIssueId: id },
+        expectedVersion: 1, toState: "IMPROVING",
+      }],
+    };
+    expect(proposalDraftV1Schema.parse(legacy)).toEqual(legacy);
   });
 
   it.each([
@@ -69,6 +78,14 @@ describe("ProposalDraftV1", () => {
     ["standalone match", { ...evidence, type: "MATCH_CANONICAL_ISSUE" }],
     ["standalone merge", { ...evidence, type: "MERGE_CANONICAL_ISSUE" }],
     ["proposed issue without a key", { ...evidence, studentIssueRef: { kind: "PROPOSED" } }],
+    ["blank supportingEvidenceKey", {
+      type: "TRANSITION_STUDENT_ISSUE",
+      key: "transition",
+      studentIssueRef: { kind: "EXISTING", studentIssueId: id },
+      expectedVersion: 1,
+      toState: "IMPROVING",
+      supportingEvidenceKey: "   ",
+    }],
     ["mastered state", {
       type: "TRANSITION_STUDENT_ISSUE",
       key: "transition",

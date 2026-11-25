@@ -58,7 +58,8 @@ async function approveEvidence(f: Awaited<ReturnType<typeof seed>>, noteId: stri
     studentRef: { kind: "RESOLVED", studentAlias: f.student.ai_alias },
     studentIssueRef: { kind: "EXISTING", studentIssueId: f.issueId } }];
   if (transition) drafts.push({ key: "t", type: "TRANSITION_STUDENT_ISSUE", toState: "IMPROVING", expectedVersion: 1,
-    studentIssueRef: { kind: "EXISTING", studentIssueId: f.issueId }, reason: "Synthetic decision after late evidence" });
+    studentIssueRef: { kind: "EXISTING", studentIssueId: f.issueId }, supportingEvidenceKey: "e",
+    reason: "Synthetic decision after late evidence" });
   expect(await runNextJob({ db, now: () => new Date(), structurer: new FakeNoteStructurer(() => ({
     schemaVersion: "1", items: drafts,
   })) })).toBe(true);
@@ -151,12 +152,12 @@ test("a teacher transition uses its created_at decision time rather than its lin
   const evidenceId = await approveEvidence(f, captured.rawNote.id, true);
   const after = Date.now();
   const [transition] = await db.selectFrom("student_issue_transitions").selectAll().where("student_issue_id", "=", f.issueId).execute();
-  expect(transition).toMatchObject({ from_state: "OPEN", to_state: "IMPROVING", actor_user_id: teacherId });
+  expect(transition).toMatchObject({
+    from_state: "OPEN", to_state: "IMPROVING", actor_user_id: teacherId, evidence_event_id: evidenceId,
+  });
   expect(transition.proposal_item_id).not.toBeNull();
   expect(transition.created_at.getTime()).toBeGreaterThanOrEqual(before);
   expect(transition.created_at.getTime()).toBeLessThanOrEqual(after);
-  // Explicitly link old Evidence so a projection regression deriving the decision time from Evidence is observable.
-  await db.updateTable("student_issue_transitions").set({ evidence_event_id: evidenceId }).where("id", "=", transition.id).execute();
   const overview = await app.inject(`${f.root}/students/${f.student.id}/overview`);
   expect(overview.statusCode, overview.body).toBe(200);
   const dto = studentOverviewDtoSchema.parse(overview.json());

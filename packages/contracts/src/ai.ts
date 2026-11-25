@@ -88,6 +88,7 @@ export const proposalDraftItemV1Schema = z.discriminatedUnion("type", [
     type: z.literal("TRANSITION_STUDENT_ISSUE"),
     toState: studentIssueStateSchema,
     reason: z.string().nullish(),
+    supportingEvidenceKey: nonblankTextSchema.optional(),
   }),
 ]);
 export type ProposalDraftItemV1 = z.infer<typeof proposalDraftItemV1Schema>;

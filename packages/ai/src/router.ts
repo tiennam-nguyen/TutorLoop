@@ -22,7 +22,7 @@ export interface AIProviderAdapter {
 export type AIRunRecordInput = {
   provider: AIModelConfig["provider"];
   model: string;
-  promptVersion: "structure-note-v1" | "structure-note-v2";
+  promptVersion: "structure-note-v1" | "structure-note-v2" | "structure-note-v3";
   schemaVersion: "1";
   redactionVersion: "1";
   inputHash: string;
@@ -48,7 +48,7 @@ export class AIProcessingError extends Error {
   }
 }
 
-const PROMPT_VERSION = "structure-note-v2";
+const PROMPT_VERSION = "structure-note-v3";
 const SCHEMA_VERSION = "1";
 export const STRUCTURE_NOTE_VERSIONS = {
   promptVersion: PROMPT_VERSION, schemaVersion: SCHEMA_VERSION, redactionVersion: "1",
@@ -61,6 +61,7 @@ const SYSTEM_PROMPT = [
   "Redacted values such as [PRIVATE] do not identify students.",
   "Preserve uncertainty. Use an empty items array if there are no supported proposals.",
   "Use each existing student issue's supplied version when proposing an update. Give every item a unique key.",
+  "Every TRANSITION_STUDENT_ISSUE must reference one supporting CREATE_EVIDENCE item in the same draft using supportingEvidenceKey, targeting the same studentIssueRef; omit the transition if no supporting evidence can be produced.",
   "You may propose MERGE_CANONICAL_ISSUE for two provided canonical candidates only when the note supports it. Supply both IDs and their versions; the teacher decides.",
   "Use observedAt only for an explicit, unambiguous timestamp in the note, otherwise omit it or use null if required.",
 ].join("\n");

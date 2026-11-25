@@ -57,7 +57,7 @@ test("accepts a valid primary and records only versioned metadata and the sent p
   expect(result.attempts).toEqual([{
     provider: "GEMINI",
     model: "gemini-3.8-flash",
-    promptVersion: "structure-note-v2",
+    promptVersion: "structure-note-v3",
     schemaVersion: "1",
     redactionVersion: "1",
     inputHash: createHash("sha256").update(JSON.stringify(calls[0].userPayload)).digest("hex"),
@@ -119,6 +119,10 @@ test.each([
     key: "u", type: "UPDATE_MANIFESTATION", manifestation: "Signs",
     studentIssueRef: { kind: "EXISTING", studentIssueId: "SI_001" }, expectedVersion: 2_147_483_648,
   }]],
+  ["a transition missing supportingEvidenceKey", [{
+    key: "t", type: "TRANSITION_STUDENT_ISSUE", toState: "IMPROVING",
+    studentIssueRef: { kind: "EXISTING", studentIssueId: "SI_001" }, expectedVersion: 2,
+  }]],
 ])("invalid drafts with %s retry and use fallback before recording success", async (_, items) => {
   const invalid = { schemaVersion: "1", items };
   expect(proposalDraftV1Schema.safeParse(invalid).success).toBe(true);
@@ -147,12 +151,19 @@ test("accepts an unknown student as a valid unresolved draft", async () => {
 test.each(["UPDATE_MANIFESTATION", "TRANSITION_STUDENT_ISSUE"] as const)(
   "rejects %s with a version other than the supplied snapshot before recording success",
   async (type) => {
+    const supporting = type === "TRANSITION_STUDENT_ISSUE" ? [{
+      key: "ev", type: "CREATE_EVIDENCE" as const, observationText: "Observed improvement",
+      studentRef: { kind: "RESOLVED" as const, studentAlias: "STU_001" },
+      studentIssueRef: { kind: "EXISTING" as const, studentIssueId: "SI_001" },
+    }] : [];
     const item = {
       key: "change", type, studentIssueRef: { kind: "EXISTING", studentIssueId: "SI_001" },
-      ...(type === "UPDATE_MANIFESTATION" ? { manifestation: "Signs" } : { toState: "IMPROVING" }),
+      ...(type === "UPDATE_MANIFESTATION"
+        ? { manifestation: "Signs" }
+        : { toState: "IMPROVING", supportingEvidenceKey: "ev" }),
     };
-    const wrongVersion = { schemaVersion: "1", items: [{ ...item, expectedVersion: 3 }] };
-    const matchingVersion = { schemaVersion: "1", items: [{ ...item, expectedVersion: 2 }] };
+    const wrongVersion = { schemaVersion: "1", items: [...supporting, { ...item, expectedVersion: 3 }] };
+    const matchingVersion = { schemaVersion: "1", items: [...supporting, { ...item, expectedVersion: 2 }] };
     expect(proposalDraftV1Schema.safeParse(wrongVersion).success).toBe(true);
     const { calls, route } = setup(wrongVersion, wrongVersion, matchingVersion);
     const result = await route();
@@ -162,9 +173,9 @@ test.each(["UPDATE_MANIFESTATION", "TRANSITION_STUDENT_ISSUE"] as const)(
       ["TRANSIENT_FAILURE", "INVALID_STRUCTURED_OUTPUT"],
       ["SUCCESS", null],
     ]);
-    expect(result.draft.items).toEqual([{
+    expect(result.draft.items.at(-1)).toEqual({
       ...item, expectedVersion: 2, studentIssueRef: { kind: "EXISTING", studentIssueId: "si-raw-id" },
-    }]);
+    });
   },
 );
 

@@ -361,5 +361,8 @@ test("reassessment loop: a group recheck stays in Needs results until both outco
     await expect(events.nth(1).locator("time")).toHaveText(/14:00/);
     await expect(events.nth(2).locator("time")).toHaveText(/14:00/);
     await expect(events.nth(3).locator("time")).toHaveText(/14:00/);
+    const provenanceHref = await events.nth(5).getByRole("link", { name: "Supporting evidence" }).getAttribute("href");
+    expect(provenanceHref).toMatch(/^#evidence-[0-9a-f-]+$/);
+    await expect(timeline.locator(provenanceHref!)).toContainText(evidence);
   }
 });

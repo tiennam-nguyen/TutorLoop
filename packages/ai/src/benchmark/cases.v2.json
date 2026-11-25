@@ -1,0 +1,2314 @@
+{
+  "revision": "v2",
+  "cases": [
+    {
+      "id": "01-a",
+      "scenario": "single-evidence",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-01-a",
+        "body": "Fable added the numerators and denominators on one fraction sum. Record the observation only.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Fable",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [],
+        "studentIssues": []
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Added the numerators and denominators on a fraction sum."
+          }
+        ]
+      },
+      "anchors": {
+        "e": [
+          [
+            "numerator"
+          ],
+          [
+            "denominator"
+          ],
+          [
+            "add",
+            "sum"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "01-b",
+      "scenario": "single-evidence",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-01-b",
+        "body": "Orbit plotted (2, 5) as (5, 2) on one graph. Please record just that example.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Orbit",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [],
+        "studentIssues": []
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Swapped the coordinates when plotting (2, 5)."
+          }
+        ]
+      },
+      "anchors": {
+        "e": [
+          [
+            "swapp",
+            "revers",
+            "(5"
+          ],
+          [
+            "coordinate",
+            "(2",
+            "plot"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "02-a",
+      "scenario": "multiple-students",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-02-a",
+        "body": "Record separate observations only. Fable divided before adding; Orbit added before dividing in the same order-of-operations exercise.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Fable",
+            "aiAlias": "STU_001"
+          },
+          {
+            "studentId": "student-2",
+            "displayLabel": "Orbit",
+            "aiAlias": "STU_002"
+          }
+        ],
+        "canonicalIssues": [],
+        "studentIssues": []
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "f",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Divided before adding."
+          },
+          {
+            "key": "o",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_002"
+            },
+            "observationText": "Added before dividing."
+          }
+        ]
+      },
+      "anchors": {
+        "f": [
+          [
+            "divided before add",
+            "division before add",
+            "dividing before add",
+            "division first"
+          ]
+        ],
+        "o": [
+          [
+            "added before divid",
+            "addition before divis",
+            "adding before divid",
+            "addition first"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "02-b",
+      "scenario": "multiple-students",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-02-b",
+        "body": "In the graphing exercise Birch labeled the horizontal axis 'y'; Lumen labeled both axes correctly. Capture separate examples, no new issue.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Birch",
+            "aiAlias": "STU_001"
+          },
+          {
+            "studentId": "student-2",
+            "displayLabel": "Lumen",
+            "aiAlias": "STU_002"
+          }
+        ],
+        "canonicalIssues": [],
+        "studentIssues": []
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "b",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Labeled the horizontal axis y."
+          },
+          {
+            "key": "l",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_002"
+            },
+            "observationText": "Labeled both axes correctly."
+          }
+        ]
+      },
+      "anchors": {
+        "b": [
+          [
+            "horizontal axis y",
+            "horizontal axis as y",
+            "horizontal axis with y",
+            "x-axis y",
+            "x-axis as y",
+            "x-axis with y",
+            "y on the horizontal axis",
+            "labeled y on the x-axis"
+          ]
+        ],
+        "l": [
+          [
+            "both axes correctly",
+            "correctly labeled both axes",
+            "accurately labeled both axes",
+            "both axes accurately",
+            "correct labels on both axes",
+            "correct x and y axis labels"
+          ]
+        ]
+      },
+      "contradictions": {
+        "b": [
+          "horizontal axis x",
+          "horizontal axis as x",
+          "x-axis as x",
+          "did not label the horizontal axis y"
+        ],
+        "l": [
+          "incorrectly labeled",
+          "axes incorrectly",
+          "did not label both",
+          "not labeled correctly"
+        ]
+      }
+    },
+    {
+      "id": "03-a",
+      "scenario": "improvement-with-error",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-03-a",
+        "body": "For the known sign issue, Fable now gets most products with unlike signs right, but wrote (-3) × 2 = 6 once. Log this as one observation preserving both parts and mark the issue improving.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Fable",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [
+          {
+            "canonicalIssueId": "canonical-1",
+            "label": "Signs when multiplying integers",
+            "description": "Dropping a negative sign in a product."
+          }
+        ],
+        "studentIssues": [
+          {
+            "studentIssueId": "issue-1",
+            "studentId": "student-1",
+            "canonicalIssueId": "canonical-1",
+            "state": "OPEN",
+            "version": 2,
+            "manifestation": null
+          }
+        ]
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Got most products right but wrote (-3) × 2 = 6 once.",
+            "studentIssueRef": {
+              "kind": "EXISTING",
+              "studentIssueId": "issue-1"
+            }
+          },
+          {
+            "key": "t",
+            "type": "TRANSITION_STUDENT_ISSUE",
+            "studentIssueRef": {
+              "kind": "EXISTING",
+              "studentIssueId": "issue-1"
+            },
+            "toState": "IMPROVING",
+            "expectedVersion": 2,
+            "reason": "Most unlike-sign products were correct, with one remaining error.",
+            "supportingEvidenceKey": "e"
+          }
+        ]
+      },
+      "anchors": {
+        "e": [
+          [
+            "most products right",
+            "most products correct",
+            "most unlike-sign products right",
+            "most unlike-sign products correct",
+            "most unlike-sign products were correct",
+            "most products were correct",
+            "usually gets the sign right",
+            "sign was correct most of the time"
+          ],
+          [
+            "(-3)×2=6",
+            "-3×2=6",
+            "wrote 6 instead of -6",
+            "reported 6 instead of -6",
+            "gave 6 instead of -6",
+            "positive 6 instead of negative 6"
+          ],
+          [
+            "but",
+            "still",
+            "though",
+            "once",
+            "one"
+          ]
+        ],
+        "t": []
+      },
+      "contradictions": {
+        "e": [
+          "most products wrong",
+          "most products were wrong",
+          "most products incorrectly",
+          "most unlike-sign products were incorrect"
+        ]
+      }
+    },
+    {
+      "id": "03-b",
+      "scenario": "improvement-with-error",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-03-b",
+        "body": "Orbit correctly found a common denominator on three problems, then added the denominators on the fourth. Keep both facts together as evidence on the known issue and mark it improving.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Orbit",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [
+          {
+            "canonicalIssueId": "canonical-1",
+            "label": "Common denominators",
+            "description": "Adds fractions without converting them to a common denominator."
+          }
+        ],
+        "studentIssues": [
+          {
+            "studentIssueId": "issue-1",
+            "studentId": "student-1",
+            "canonicalIssueId": "canonical-1",
+            "state": "OPEN",
+            "version": 4,
+            "manifestation": null
+          }
+        ]
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Found a common denominator on three problems but added denominators on the fourth.",
+            "studentIssueRef": {
+              "kind": "EXISTING",
+              "studentIssueId": "issue-1"
+            }
+          },
+          {
+            "key": "t",
+            "type": "TRANSITION_STUDENT_ISSUE",
+            "studentIssueRef": {
+              "kind": "EXISTING",
+              "studentIssueId": "issue-1"
+            },
+            "toState": "IMPROVING",
+            "expectedVersion": 4,
+            "reason": "Three correct attempts and a remaining error.",
+            "supportingEvidenceKey": "e"
+          }
+        ]
+      },
+      "anchors": {
+        "e": [
+          [
+            "common denominator"
+          ],
+          [
+            "three",
+            "3"
+          ],
+          [
+            "fourth",
+            "4th",
+            "last"
+          ],
+          [
+            "added",
+            "adding",
+            "addition"
+          ]
+        ],
+        "t": []
+      }
+    },
+    {
+      "id": "04-a",
+      "scenario": "duplicate-student",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-04-a",
+        "body": "Birch reversed the x and y coordinates. Record the example for review; I didn't note which Birch.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Birch",
+            "aiAlias": "STU_001"
+          },
+          {
+            "studentId": "student-2",
+            "displayLabel": "Birch",
+            "aiAlias": "STU_002"
+          },
+          {
+            "studentId": "student-3",
+            "displayLabel": "Lumen",
+            "aiAlias": "STU_003"
+          }
+        ],
+        "canonicalIssues": [],
+        "studentIssues": []
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "AMBIGUOUS",
+              "token": "AMBIG_001",
+              "candidateAliases": [
+                "STU_001",
+                "STU_002"
+              ]
+            },
+            "observationText": "Reversed the coordinates."
+          }
+        ]
+      },
+      "anchors": {
+        "e": [
+          [
+            "swapp",
+            "revers",
+            "interchang"
+          ],
+          [
+            "coordinate",
+            "x and y"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "04-b",
+      "scenario": "duplicate-student",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-04-b",
+        "body": "I wrote 'Mica' twice on the roster and am unsure which Mica changed 2/3 to 3/2. Keep the evidence for review without assigning it.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Mica",
+            "aiAlias": "STU_001"
+          },
+          {
+            "studentId": "student-2",
+            "displayLabel": "Lumen",
+            "aiAlias": "STU_002"
+          },
+          {
+            "studentId": "student-3",
+            "displayLabel": "Mica",
+            "aiAlias": "STU_003"
+          }
+        ],
+        "canonicalIssues": [],
+        "studentIssues": []
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "AMBIGUOUS",
+              "token": "AMBIG_001",
+              "candidateAliases": [
+                "STU_001",
+                "STU_003"
+              ]
+            },
+            "observationText": "Changed 2/3 to 3/2."
+          }
+        ]
+      },
+      "anchors": {
+        "e": [
+          [
+            "2/3"
+          ],
+          [
+            "3/2"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "05-a",
+      "scenario": "unknown-student",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-05-a",
+        "body": "Guest learner Quill Guest, who isn't in this class, forgot to distribute the factor to the second term. Keep the observation as unresolved.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Lumen",
+            "aiAlias": "STU_001"
+          },
+          {
+            "studentId": "student-2",
+            "displayLabel": "Mica",
+            "aiAlias": "STU_002"
+          }
+        ],
+        "canonicalIssues": [],
+        "studentIssues": []
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "UNKNOWN",
+              "token": "Quill Guest"
+            },
+            "observationText": "Forgot to distribute to the second term."
+          }
+        ]
+      },
+      "anchors": {
+        "e": [
+          [
+            "distribut"
+          ],
+          [
+            "second",
+            "both terms",
+            "every term"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "05-b",
+      "scenario": "unknown-student",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-05-b",
+        "body": "The only name noted on the blank guest card was Comet Guest, a student absent from our roster. Rounded 3.49 to 3.5 when asked for the nearest whole number. Record it without assigning it to our students.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Fable",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [],
+        "studentIssues": []
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "UNKNOWN",
+              "token": "Comet Guest"
+            },
+            "observationText": "Rounded 3.49 to 3.5 instead of the nearest whole number."
+          }
+        ]
+      },
+      "anchors": {
+        "e": [
+          [
+            "3.49"
+          ],
+          [
+            "3.5"
+          ],
+          [
+            "whole",
+            "integer"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "06-a",
+      "scenario": "existing-canonical",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-06-a",
+        "body": "Fable repeatedly wrote products of opposite signs as positive. Open a student issue under our existing issue for that pattern and attach today's evidence.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Fable",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [
+          {
+            "canonicalIssueId": "canonical-1",
+            "label": "Signs when multiplying integers",
+            "description": "Dropping a negative sign in a product."
+          },
+          {
+            "canonicalIssueId": "canonical-2",
+            "label": "Common denominators",
+            "description": "Adds fractions without converting them to a common denominator."
+          }
+        ],
+        "studentIssues": []
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "s",
+            "type": "CREATE_STUDENT_ISSUE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "canonicalIssueRef": {
+              "kind": "EXISTING",
+              "canonicalIssueId": "canonical-1"
+            },
+            "manifestation": "Wrote products of opposite signs as positive."
+          },
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Again recorded opposite-sign products as positive.",
+            "studentIssueRef": {
+              "kind": "PROPOSED",
+              "proposalKey": "s"
+            }
+          }
+        ]
+      },
+      "anchors": {
+        "s": [],
+        "e": [
+          [
+            "positive"
+          ],
+          [
+            "sign",
+            "negative"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "06-b",
+      "scenario": "existing-canonical",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-06-b",
+        "body": "Orbit repeatedly added fractions with different denominators by adding the denominators. Open a student issue under the matching class issue and link this example.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Orbit",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [
+          {
+            "canonicalIssueId": "canonical-1",
+            "label": "Signs when multiplying integers",
+            "description": "Dropping a negative sign in a product."
+          },
+          {
+            "canonicalIssueId": "canonical-2",
+            "label": "Common denominators",
+            "description": "Adds fractions without converting them to a common denominator."
+          }
+        ],
+        "studentIssues": []
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "s",
+            "type": "CREATE_STUDENT_ISSUE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "canonicalIssueRef": {
+              "kind": "EXISTING",
+              "canonicalIssueId": "canonical-2"
+            },
+            "manifestation": "Added denominators for fractions with different denominators."
+          },
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Added the denominators when adding unlike fractions.",
+            "studentIssueRef": {
+              "kind": "PROPOSED",
+              "proposalKey": "s"
+            }
+          }
+        ]
+      },
+      "anchors": {
+        "s": [],
+        "e": [
+          [
+            "denominator"
+          ],
+          [
+            "add"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "07-a",
+      "scenario": "ambiguous-canonical",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-07-a",
+        "body": "Birch gave the wrong sign in -2 × (3 - 5). It is unclear whether subtraction or multiplication caused it. Record the evidence and flag both class issues as plausible for a new student issue under review.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Birch",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [
+          {
+            "canonicalIssueId": "canonical-1",
+            "label": "Signs in integer subtraction",
+            "description": "Wrong sign when subtracting integers."
+          },
+          {
+            "canonicalIssueId": "canonical-2",
+            "label": "Signs in integer multiplication",
+            "description": "Wrong sign when multiplying integers."
+          },
+          {
+            "canonicalIssueId": "canonical-3",
+            "label": "Graph scale",
+            "description": "Misreading increments on axes."
+          }
+        ],
+        "studentIssues": []
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "s",
+            "type": "CREATE_STUDENT_ISSUE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "canonicalIssueRef": {
+              "kind": "AMBIGUOUS",
+              "candidateIds": [
+                "canonical-1",
+                "canonical-2"
+              ]
+            },
+            "manifestation": "Wrong sign, unclear step."
+          },
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Gave the wrong sign in the expression.",
+            "studentIssueRef": {
+              "kind": "PROPOSED",
+              "proposalKey": "s"
+            }
+          }
+        ]
+      },
+      "anchors": {
+        "s": [
+          [
+            "unclear",
+            "could be",
+            "either",
+            "not clear",
+            "cannot determine",
+            "may have"
+          ]
+        ],
+        "e": [
+          [
+            "sign"
+          ]
+        ]
+      },
+      "contradictions": {
+        "s": [
+          "subtraction was correct",
+          "multiplication was correct",
+          "definitely made a multiplication error",
+          "definitely made a subtraction error",
+          "must have been multiplication",
+          "must have been subtraction"
+        ],
+        "e": [
+          "subtraction was correct",
+          "multiplication was correct",
+          "definitely made a multiplication error",
+          "definitely made a subtraction error"
+        ]
+      }
+    },
+    {
+      "id": "07-b",
+      "scenario": "ambiguous-canonical",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-07-b",
+        "body": "Lumen's fraction sum ended with 5/8. It could reflect a denominator conversion error or an addition error after scaling. Flag both existing class issues for review on a proposed student issue and attach that example.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Lumen",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [
+          {
+            "canonicalIssueId": "canonical-1",
+            "label": "Fraction denominator conversion",
+            "description": "Changes the denominator without scaling appropriately."
+          },
+          {
+            "canonicalIssueId": "canonical-2",
+            "label": "Addition after conversion",
+            "description": "Adds incorrectly after denominators are already the same."
+          },
+          {
+            "canonicalIssueId": "canonical-3",
+            "label": "Rounding decimals",
+            "description": "Rounds to the wrong place."
+          }
+        ],
+        "studentIssues": []
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "s",
+            "type": "CREATE_STUDENT_ISSUE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "canonicalIssueRef": {
+              "kind": "AMBIGUOUS",
+              "candidateIds": [
+                "canonical-1",
+                "canonical-2"
+              ]
+            },
+            "manifestation": "Unclear whether the error occurred during scaling or after."
+          },
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "The fraction sum ended with 5/8.",
+            "studentIssueRef": {
+              "kind": "PROPOSED",
+              "proposalKey": "s"
+            }
+          }
+        ]
+      },
+      "anchors": {
+        "s": [
+          [
+            "unclear",
+            "could be",
+            "either",
+            "not clear",
+            "cannot determine",
+            "may have"
+          ]
+        ],
+        "e": [
+          [
+            "5/8"
+          ],
+          [
+            "sum",
+            "add"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "08-a",
+      "scenario": "new-canonical",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-08-a",
+        "body": "Fable repeatedly treats 8 cm² as 8 cm after finding an area. We have no issue for square units yet. Propose a reusable class issue, the linked student issue, and evidence.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Fable",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [
+          {
+            "canonicalIssueId": "canonical-1",
+            "label": "Common denominators",
+            "description": "Adds fractions without converting them to a common denominator."
+          }
+        ],
+        "studentIssues": []
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "c",
+            "type": "CREATE_CANONICAL_ISSUE",
+            "label": "Using linear units for area",
+            "description": "Area answers use cm rather than cm²."
+          },
+          {
+            "key": "s",
+            "type": "CREATE_STUDENT_ISSUE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "canonicalIssueRef": {
+              "kind": "PROPOSED",
+              "proposalKey": "c"
+            },
+            "manifestation": "Used cm instead of cm²."
+          },
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Wrote 8 cm instead of 8 cm² for area.",
+            "studentIssueRef": {
+              "kind": "PROPOSED",
+              "proposalKey": "s"
+            }
+          }
+        ]
+      },
+      "anchors": {
+        "c": [
+          [
+            "area",
+            "square"
+          ],
+          [
+            "unit",
+            "cm"
+          ]
+        ],
+        "s": [],
+        "e": [
+          [
+            "cm"
+          ],
+          [
+            "area",
+            "cm²",
+            "cm^2",
+            "square"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "08-b",
+      "scenario": "new-canonical",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-08-b",
+        "body": "Orbit consistently reads colon notation 2:5 as subtracting 2 from 5. Nothing in our class issue list covers interpreting ratios. Propose a class issue, the linked student issue, and evidence.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Orbit",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [
+          {
+            "canonicalIssueId": "canonical-1",
+            "label": "Signs when multiplying integers",
+            "description": "Dropping a negative sign in a product."
+          }
+        ],
+        "studentIssues": []
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "c",
+            "type": "CREATE_CANONICAL_ISSUE",
+            "label": "Interpreting ratio notation",
+            "description": "Reads the ratio colon as subtraction."
+          },
+          {
+            "key": "s",
+            "type": "CREATE_STUDENT_ISSUE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "canonicalIssueRef": {
+              "kind": "PROPOSED",
+              "proposalKey": "c"
+            },
+            "manifestation": "Read a ratio as subtraction."
+          },
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Interpreted 2:5 as subtraction.",
+            "studentIssueRef": {
+              "kind": "PROPOSED",
+              "proposalKey": "s"
+            }
+          }
+        ]
+      },
+      "anchors": {
+        "c": [
+          [
+            "ratio"
+          ],
+          [
+            "subtract",
+            "colon",
+            "interpret",
+            "notation"
+          ]
+        ],
+        "s": [],
+        "e": [
+          [
+            "2:5",
+            "2 to 5",
+            "2 : 5"
+          ],
+          [
+            "subtract",
+            "minus"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "09-a",
+      "scenario": "evidence-only",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-09-a",
+        "body": "Birch checked the answer by substituting 4 back into the equation, and it worked. Record this as an observation only.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Birch",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [],
+        "studentIssues": []
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Checked the answer by substituting 4 back into the equation."
+          }
+        ]
+      },
+      "anchors": {
+        "e": [
+          [
+            "substitut",
+            "plugged"
+          ],
+          [
+            "4"
+          ],
+          [
+            "check",
+            "verif",
+            "equation"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "09-b",
+      "scenario": "evidence-only",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-09-b",
+        "body": "Lumen accidentally copied 9 as 6 once, noticed without prompting, and corrected it. Just record the incident; don't open an issue.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Lumen",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [],
+        "studentIssues": []
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Copied 9 as 6 once and corrected it independently."
+          }
+        ]
+      },
+      "anchors": {
+        "e": [
+          [
+            "9"
+          ],
+          [
+            "6"
+          ],
+          [
+            "correct",
+            "fixed"
+          ],
+          [
+            "independent",
+            "without",
+            "own",
+            "self",
+            "unprompt"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "10-a",
+      "scenario": "recurrence",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-10-a",
+        "body": "Fable's resolved sign issue showed up again today in two products with unlike signs. Reopen that issue rather than creating a new one, and attach the observation.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Fable",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [
+          {
+            "canonicalIssueId": "canonical-1",
+            "label": "Signs when multiplying integers",
+            "description": "Dropping a negative sign in a product."
+          }
+        ],
+        "studentIssues": [
+          {
+            "studentIssueId": "issue-1",
+            "studentId": "student-1",
+            "canonicalIssueId": "canonical-1",
+            "state": "RESOLVED_FOR_NOW",
+            "version": 6,
+            "manifestation": null
+          }
+        ]
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "The signs were wrong again on two products with unlike signs.",
+            "studentIssueRef": {
+              "kind": "EXISTING",
+              "studentIssueId": "issue-1"
+            }
+          },
+          {
+            "key": "t",
+            "type": "TRANSITION_STUDENT_ISSUE",
+            "studentIssueRef": {
+              "kind": "EXISTING",
+              "studentIssueId": "issue-1"
+            },
+            "toState": "OPEN",
+            "expectedVersion": 6,
+            "reason": "The sign error recurred.",
+            "supportingEvidenceKey": "e"
+          }
+        ]
+      },
+      "anchors": {
+        "e": [
+          [
+            "two",
+            "2"
+          ],
+          [
+            "sign"
+          ],
+          [
+            "product",
+            "multipl"
+          ]
+        ],
+        "t": []
+      }
+    },
+    {
+      "id": "10-b",
+      "scenario": "recurrence",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-10-b",
+        "body": "Orbit again added the denominators instead of finding a common denominator in 1/3 + 1/6. Reopen the existing resolved issue and attach the evidence.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Orbit",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [
+          {
+            "canonicalIssueId": "canonical-1",
+            "label": "Common denominators",
+            "description": "Adds fractions without converting them to a common denominator."
+          }
+        ],
+        "studentIssues": [
+          {
+            "studentIssueId": "issue-1",
+            "studentId": "student-1",
+            "canonicalIssueId": "canonical-1",
+            "state": "RESOLVED_FOR_NOW",
+            "version": 8,
+            "manifestation": null
+          }
+        ]
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Added denominators when working on 1/3 + 1/6.",
+            "studentIssueRef": {
+              "kind": "EXISTING",
+              "studentIssueId": "issue-1"
+            }
+          },
+          {
+            "key": "t",
+            "type": "TRANSITION_STUDENT_ISSUE",
+            "studentIssueRef": {
+              "kind": "EXISTING",
+              "studentIssueId": "issue-1"
+            },
+            "toState": "OPEN",
+            "expectedVersion": 8,
+            "reason": "The denominator error returned.",
+            "supportingEvidenceKey": "e"
+          }
+        ]
+      },
+      "anchors": {
+        "e": [
+          [
+            "denominator"
+          ],
+          [
+            "add"
+          ],
+          [
+            "1/3"
+          ],
+          [
+            "1/6"
+          ]
+        ],
+        "t": []
+      }
+    },
+    {
+      "id": "11-a",
+      "scenario": "mixed-reassessment",
+      "input": {
+        "task": "RECONCILE_REASSESSMENT_OUTCOME",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-11-a",
+        "body": "Recheck of the same sign issue for Birch and Lumen. Birch got all five products right; close the issue for now. Lumen got three right but still missed two; mark improving. Record one piece of evidence per student against their own issue.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Birch",
+            "aiAlias": "STU_001"
+          },
+          {
+            "studentId": "student-2",
+            "displayLabel": "Lumen",
+            "aiAlias": "STU_002"
+          }
+        ],
+        "canonicalIssues": [
+          {
+            "canonicalIssueId": "canonical-1",
+            "label": "Signs when multiplying integers",
+            "description": "Dropping a negative sign in a product."
+          }
+        ],
+        "studentIssues": [
+          {
+            "studentIssueId": "issue-1",
+            "studentId": "student-1",
+            "canonicalIssueId": "canonical-1",
+            "state": "OPEN",
+            "version": 3,
+            "manifestation": null
+          },
+          {
+            "studentIssueId": "issue-2",
+            "studentId": "student-2",
+            "canonicalIssueId": "canonical-1",
+            "state": "OPEN",
+            "version": 5,
+            "manifestation": null
+          }
+        ]
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "b",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Got five products right.",
+            "studentIssueRef": {
+              "kind": "EXISTING",
+              "studentIssueId": "issue-1"
+            }
+          },
+          {
+            "key": "l",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_002"
+            },
+            "observationText": "Got three products right and missed two.",
+            "studentIssueRef": {
+              "kind": "EXISTING",
+              "studentIssueId": "issue-2"
+            }
+          },
+          {
+            "key": "tb",
+            "type": "TRANSITION_STUDENT_ISSUE",
+            "studentIssueRef": {
+              "kind": "EXISTING",
+              "studentIssueId": "issue-1"
+            },
+            "toState": "RESOLVED_FOR_NOW",
+            "expectedVersion": 3,
+            "reason": "All five products correct in this recheck.",
+            "supportingEvidenceKey": "b"
+          },
+          {
+            "key": "tl",
+            "type": "TRANSITION_STUDENT_ISSUE",
+            "studentIssueRef": {
+              "kind": "EXISTING",
+              "studentIssueId": "issue-2"
+            },
+            "toState": "IMPROVING",
+            "expectedVersion": 5,
+            "reason": "Three correct and two incorrect products.",
+            "supportingEvidenceKey": "l"
+          }
+        ]
+      },
+      "anchors": {
+        "b": [
+          [
+            "five",
+            "5"
+          ],
+          [
+            "correct",
+            "right"
+          ]
+        ],
+        "l": [
+          [
+            "three",
+            "3"
+          ],
+          [
+            "two",
+            "2"
+          ],
+          [
+            "miss",
+            "wrong",
+            "incorrect"
+          ]
+        ],
+        "tb": [],
+        "tl": []
+      }
+    },
+    {
+      "id": "11-b",
+      "scenario": "mixed-reassessment",
+      "input": {
+        "task": "RECONCILE_REASSESSMENT_OUTCOME",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-11-b",
+        "body": "At the recheck, Fable correctly converted four of five fractions; mark improving. Orbit, previously improving, skipped the common denominator on every problem; move the issue back to open. Log each result on the student's own existing issue.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Fable",
+            "aiAlias": "STU_001"
+          },
+          {
+            "studentId": "student-2",
+            "displayLabel": "Orbit",
+            "aiAlias": "STU_002"
+          }
+        ],
+        "canonicalIssues": [
+          {
+            "canonicalIssueId": "canonical-1",
+            "label": "Common denominators",
+            "description": "Adds fractions without converting them to a common denominator."
+          }
+        ],
+        "studentIssues": [
+          {
+            "studentIssueId": "issue-1",
+            "studentId": "student-1",
+            "canonicalIssueId": "canonical-1",
+            "state": "OPEN",
+            "version": 2,
+            "manifestation": null
+          },
+          {
+            "studentIssueId": "issue-2",
+            "studentId": "student-2",
+            "canonicalIssueId": "canonical-1",
+            "state": "IMPROVING",
+            "version": 6,
+            "manifestation": null
+          }
+        ]
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "f",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Correctly converted four of five fractions.",
+            "studentIssueRef": {
+              "kind": "EXISTING",
+              "studentIssueId": "issue-1"
+            }
+          },
+          {
+            "key": "o",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_002"
+            },
+            "observationText": "Skipped the common denominator on every problem.",
+            "studentIssueRef": {
+              "kind": "EXISTING",
+              "studentIssueId": "issue-2"
+            }
+          },
+          {
+            "key": "tf",
+            "type": "TRANSITION_STUDENT_ISSUE",
+            "studentIssueRef": {
+              "kind": "EXISTING",
+              "studentIssueId": "issue-1"
+            },
+            "toState": "IMPROVING",
+            "expectedVersion": 2,
+            "reason": "Four of five correct.",
+            "supportingEvidenceKey": "f"
+          },
+          {
+            "key": "to",
+            "type": "TRANSITION_STUDENT_ISSUE",
+            "studentIssueRef": {
+              "kind": "EXISTING",
+              "studentIssueId": "issue-2"
+            },
+            "toState": "OPEN",
+            "expectedVersion": 6,
+            "reason": "Skipped common denominators across the recheck.",
+            "supportingEvidenceKey": "o"
+          }
+        ]
+      },
+      "anchors": {
+        "f": [
+          [
+            "four",
+            "4"
+          ],
+          [
+            "five",
+            "5"
+          ],
+          [
+            "convert",
+            "conversion",
+            "denominator"
+          ]
+        ],
+        "o": [
+          [
+            "common denominator"
+          ],
+          [
+            "every",
+            "all",
+            "none",
+            "each"
+          ]
+        ],
+        "tf": [],
+        "to": []
+      }
+    },
+    {
+      "id": "12-a",
+      "scenario": "conflicting-history",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-12-a",
+        "body": "Earlier note said Fable consistently handled negative products correctly. Today Fable wrote (-4) × 2 = 8. Attach today's conflicting example to the known sign issue. Wait for a recheck before changing state.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Fable",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [
+          {
+            "canonicalIssueId": "canonical-1",
+            "label": "Signs when multiplying integers",
+            "description": "Dropping a negative sign in a product."
+          }
+        ],
+        "studentIssues": [
+          {
+            "studentIssueId": "issue-1",
+            "studentId": "student-1",
+            "canonicalIssueId": "canonical-1",
+            "state": "IMPROVING",
+            "version": 4,
+            "manifestation": "Previous work showed correct handling of negative products."
+          }
+        ]
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Wrote (-4) × 2 = 8 in today's work.",
+            "studentIssueRef": {
+              "kind": "EXISTING",
+              "studentIssueId": "issue-1"
+            }
+          }
+        ]
+      },
+      "anchors": {
+        "e": [
+          [
+            "-4",
+            "negative four"
+          ],
+          [
+            "8"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "12-b",
+      "scenario": "conflicting-history",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-12-b",
+        "body": "Last worksheet showed Birch using equal denominators correctly; today's solution adds the denominators. Log today's evidence on the existing issue but leave state and manifestation alone until I see more work.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Birch",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [
+          {
+            "canonicalIssueId": "canonical-1",
+            "label": "Common denominators",
+            "description": "Adds fractions without converting them to a common denominator."
+          }
+        ],
+        "studentIssues": [
+          {
+            "studentIssueId": "issue-1",
+            "studentId": "student-1",
+            "canonicalIssueId": "canonical-1",
+            "state": "OPEN",
+            "version": 6,
+            "manifestation": "Previously found common denominators on a different worksheet."
+          }
+        ]
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Added the denominators in today's solution.",
+            "studentIssueRef": {
+              "kind": "EXISTING",
+              "studentIssueId": "issue-1"
+            }
+          }
+        ]
+      },
+      "anchors": {
+        "e": [
+          [
+            "add"
+          ],
+          [
+            "denominator"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "13-a",
+      "scenario": "overclaim-diagnosis",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-13-a",
+        "body": "Mica wrote 1/5 + 1/5 = 2/10 exactly once. I wondered whether it was a misconception, but don't diagnose or create a student issue from one answer. Record the actual answer.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Mica",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [],
+        "studentIssues": []
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Wrote 1/5 + 1/5 = 2/10 once."
+          }
+        ]
+      },
+      "anchors": {
+        "e": [
+          [
+            "1/5"
+          ],
+          [
+            "2/10"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "13-b",
+      "scenario": "overclaim-diagnosis",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-13-b",
+        "body": "A colleague called it a learning disorder, but Lumen only drew one unlabeled number line with unequal tick spacing. Preserve the observed spacing and missing labels, with no inference or new issue.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Lumen",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [],
+        "studentIssues": []
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Drew one number line without labels and with unequal tick spacing."
+          }
+        ]
+      },
+      "anchors": {
+        "e": [
+          [
+            "number line"
+          ],
+          [
+            "unequal",
+            "uneven",
+            "irregular",
+            "not evenly"
+          ],
+          [
+            "unlabel",
+            "without label",
+            "no label",
+            "missing label"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "14-a",
+      "scenario": "overclaim-mastery",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-14-a",
+        "body": "Fable completed one sign exercise correctly after I gave a hint. Someone said that means mastery; it isn't enough to adjust the issue. Attach just the observation to the existing sign issue.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Fable",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [
+          {
+            "canonicalIssueId": "canonical-1",
+            "label": "Signs when multiplying integers",
+            "description": "Dropping a negative sign in a product."
+          }
+        ],
+        "studentIssues": [
+          {
+            "studentIssueId": "issue-1",
+            "studentId": "student-1",
+            "canonicalIssueId": "canonical-1",
+            "state": "OPEN",
+            "version": 2,
+            "manifestation": null
+          }
+        ]
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Completed one sign exercise correctly after a hint.",
+            "studentIssueRef": {
+              "kind": "EXISTING",
+              "studentIssueId": "issue-1"
+            }
+          }
+        ]
+      },
+      "anchors": {
+        "e": [
+          [
+            "one",
+            "1",
+            "single"
+          ],
+          [
+            "correct",
+            "right"
+          ],
+          [
+            "hint",
+            "prompt"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "14-b",
+      "scenario": "overclaim-mastery",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-14-b",
+        "body": "Orbit got two fraction sums right with a worked example in view. Record that small success against the existing issue without claiming mastery or changing issue state.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Orbit",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [
+          {
+            "canonicalIssueId": "canonical-1",
+            "label": "Common denominators",
+            "description": "Adds fractions without converting them to a common denominator."
+          }
+        ],
+        "studentIssues": [
+          {
+            "studentIssueId": "issue-1",
+            "studentId": "student-1",
+            "canonicalIssueId": "canonical-1",
+            "state": "IMPROVING",
+            "version": 4,
+            "manifestation": null
+          }
+        ]
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Got two fraction sums right while referring to a worked example.",
+            "studentIssueRef": {
+              "kind": "EXISTING",
+              "studentIssueId": "issue-1"
+            }
+          }
+        ]
+      },
+      "anchors": {
+        "e": [
+          [
+            "two",
+            "2"
+          ],
+          [
+            "correct",
+            "right"
+          ],
+          [
+            "worked example",
+            "example",
+            "model"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "15-a",
+      "scenario": "vietnamese",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-15-a",
+        "body": "Sao Mai viết 3/7 + 2/7 = 5/14 ở một bài. Chỉ ghi lại quan sát, không tạo vấn đề mới.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Sao Mai",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [],
+        "studentIssues": []
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Viết 3/7 + 2/7 = 5/14 ở một bài."
+          }
+        ]
+      },
+      "anchors": {
+        "e": [
+          [
+            "3/7"
+          ],
+          [
+            "2/7"
+          ],
+          [
+            "5/14"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "15-b",
+      "scenario": "vietnamese",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-15-b",
+        "body": "Bình Minh ghi đơn vị cm thay vì cm² khi tính diện tích hình chữ nhật. Chỉ lưu một quan sát.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Bình Minh",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [],
+        "studentIssues": []
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Ghi cm thay vì cm² khi tính diện tích hình chữ nhật."
+          }
+        ]
+      },
+      "anchors": {
+        "e": [
+          [
+            "cm"
+          ],
+          [
+            "cm²",
+            "cm^2",
+            "vuông",
+            "square"
+          ],
+          [
+            "diện tích",
+            "area"
+          ],
+          [
+            "hình chữ nhật",
+            "rectangle"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "16-a",
+      "scenario": "mixed-shorthand",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-16-a",
+        "body": "Sao Mai: slope đúng 2; y-intercept ghi -3 thay vì 3. Cùng 1 bài. Ghi lại ý đúng và sai trong cùng một quan sát, không mở issue.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Sao Mai",
+            "aiAlias": "STU_001"
+          }
+        ],
+        "canonicalIssues": [],
+        "studentIssues": []
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "e",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Slope đúng bằng 2, nhưng y-intercept ghi -3 thay vì 3."
+          }
+        ]
+      },
+      "anchors": {
+        "e": [
+          [
+            "slope",
+            "hệ số góc"
+          ],
+          [
+            "2"
+          ],
+          [
+            "intercept",
+            "tung độ gốc",
+            "giao điểm"
+          ],
+          [
+            "-3",
+            "−3"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "16-b",
+      "scenario": "mixed-shorthand",
+      "input": {
+        "task": "STRUCTURE_OBSERVATION_NOTE",
+        "classId": "benchmark-class-v1",
+        "rawNoteId": "synthetic-16-b",
+        "body": "Bình Minh: FOIL -> quên middle terms. Sao Mai: 4 terms đủ. Ghi 2 observations riêng, chưa mở issue.",
+        "observedAt": "2026-01-01T00:00:00Z",
+        "students": [
+          {
+            "studentId": "student-1",
+            "displayLabel": "Bình Minh",
+            "aiAlias": "STU_001"
+          },
+          {
+            "studentId": "student-2",
+            "displayLabel": "Sao Mai",
+            "aiAlias": "STU_002"
+          }
+        ],
+        "canonicalIssues": [],
+        "studentIssues": []
+      },
+      "expected": {
+        "schemaVersion": "1",
+        "items": [
+          {
+            "key": "b",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_001"
+            },
+            "observationText": "Bỏ sót các middle terms khi FOIL."
+          },
+          {
+            "key": "s",
+            "type": "CREATE_EVIDENCE",
+            "studentRef": {
+              "kind": "RESOLVED",
+              "studentAlias": "STU_002"
+            },
+            "observationText": "Có đủ 4 terms khi khai triển."
+          }
+        ]
+      },
+      "anchors": {
+        "b": [
+          [
+            "middle",
+            "hạng tử giữa",
+            "số hạng giữa",
+            "cross term"
+          ],
+          [
+            "quên",
+            "thiếu",
+            "bỏ sót",
+            "omitt",
+            "miss",
+            "forgot"
+          ]
+        ],
+        "s": [
+          [
+            "4",
+            "bốn",
+            "four"
+          ],
+          [
+            "term",
+            "hạng tử"
+          ],
+          [
+            "đủ",
+            "all",
+            "đúng",
+            "correct",
+            "includ"
+          ]
+        ]
+      }
+    }
+  ]
+}

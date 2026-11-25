@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { STRUCTURE_NOTE_VERSIONS } from "../router.ts";
 import { rankCandidates, SCORE_WEIGHTS } from "./score.ts";
-import type { CandidateResult } from "./types.ts";
+import type { BenchmarkRevision, CandidateResult } from "./types.ts";
 
 const ARTIFACT_ROOT = fileURLToPath(new URL("../../../../artifacts/ai-benchmarks/", import.meta.url));
 
@@ -12,7 +12,7 @@ function isAlreadyPresent(error: unknown): boolean {
 }
 
 export async function writeReport(
-  dataset: { revision: "v1"; sha256: string; cases: readonly unknown[] },
+  dataset: { revision: BenchmarkRevision; sha256: string; cases: readonly unknown[] },
   results: readonly CandidateResult[],
   startedAt: Date,
 ): Promise<string> {

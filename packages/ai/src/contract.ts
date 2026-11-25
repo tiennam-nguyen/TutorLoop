@@ -1,4 +1,6 @@
-import type { AiTask, ProposalDraftItemV1, ProposalDraftV1, StudentIssueState } from "@tutorloop/contracts";
+import type {
+  AiTask, ProposalDraftItemV1, ProposalDraftV1, StudentIssueRef, StudentIssueState, StudentRef,
+} from "@tutorloop/contracts";
 
 export type StructureNoteInput = {
   task: AiTask;
@@ -50,27 +52,44 @@ function canStoreJsonText(value: unknown): boolean {
   return true;
 }
 
+function sameStudentIssueRef(left: StudentIssueRef | null | undefined, right: StudentIssueRef): boolean {
+  if (!left || left.kind !== right.kind) return false;
+  return left.kind === "EXISTING" && right.kind === "EXISTING"
+    ? left.studentIssueId.toLowerCase() === right.studentIssueId.toLowerCase()
+    : left.kind === "PROPOSED" && right.kind === "PROPOSED" && left.proposalKey === right.proposalKey;
+}
+
+function sameStudentRef(left: StudentRef, right: StudentRef): boolean {
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "RESOLVED" && right.kind === "RESOLVED") return left.studentAlias === right.studentAlias;
+  if (left.kind === "UNKNOWN" && right.kind === "UNKNOWN") return left.token === right.token;
+  return left.kind === "AMBIGUOUS" && right.kind === "AMBIGUOUS" &&
+    left.token === right.token &&
+    left.candidateAliases.length === right.candidateAliases.length &&
+    left.candidateAliases.every((alias) => right.candidateAliases.includes(alias));
+}
+
 // Both routed and injected drafts must fit the loaded class context and proposal storage.
 export function prepareDraftForPersistence(
   draft: ProposalDraftV1, input: Pick<StructureNoteInput, "students" | "canonicalIssues" | "studentIssues">,
 ): PreparedDraftItem[] | undefined {
   if (!canStoreJsonText(draft)) return;
 
-  const aliases = new Set(input.students.map(({ aiAlias }) => aiAlias));
-  const canonicalIds = new Set(input.canonicalIssues.map(({ canonicalIssueId }) => canonicalIssueId));
-  const studentIssueVersions = new Map(input.studentIssues.map(({ studentIssueId, version }) => [studentIssueId, version]));
-  const typesByKey = new Map(draft.items.map(({ key, type }) => [key, type]));
+  const studentIdByAlias = new Map(input.students.map(({ aiAlias, studentId }) => [aiAlias, studentId]));
+  const canonicalIds = new Set(input.canonicalIssues.map(({ canonicalIssueId }) => canonicalIssueId.toLowerCase()));
+  const studentIssuesById = new Map(input.studentIssues.map((issue) => [issue.studentIssueId.toLowerCase(), issue]));
+  const itemsByKey = new Map(draft.items.map((item) => [item.key, item]));
   const prepared: PreparedDraftItem[] = [];
 
   for (const item of draft.items) {
     if ("studentRef" in item && item.studentRef.kind === "RESOLVED" &&
-      !aliases.has(item.studentRef.studentAlias)) return;
+      !studentIdByAlias.has(item.studentRef.studentAlias)) return;
 
     let dependencyKey: string | null = null;
     if ("canonicalIssueRef" in item) {
       const ref = item.canonicalIssueRef;
       if (ref.kind === "PROPOSED") {
-        if (typesByKey.get(ref.proposalKey) !== "CREATE_CANONICAL_ISSUE") return;
+        if (itemsByKey.get(ref.proposalKey)?.type !== "CREATE_CANONICAL_ISSUE") return;
         dependencyKey = ref.proposalKey;
       } else if (ref.kind === "EXISTING" && !canonicalIds.has(ref.canonicalIssueId.toLowerCase())) {
         return;
@@ -78,11 +97,32 @@ export function prepareDraftForPersistence(
     }
     const issueRef = "studentIssueRef" in item ? item.studentIssueRef : null;
     if (issueRef?.kind === "PROPOSED") {
-      if (typesByKey.get(issueRef.proposalKey) !== "CREATE_STUDENT_ISSUE") return;
+      if (itemsByKey.get(issueRef.proposalKey)?.type !== "CREATE_STUDENT_ISSUE") return;
       dependencyKey = issueRef.proposalKey;
     } else if (issueRef?.kind === "EXISTING") {
-      const version = studentIssueVersions.get(issueRef.studentIssueId.toLowerCase());
-      if (version === undefined || ("expectedVersion" in item && item.expectedVersion !== version)) return;
+      const existingIssue = studentIssuesById.get(issueRef.studentIssueId.toLowerCase());
+      if (!existingIssue || ("expectedVersion" in item && item.expectedVersion !== existingIssue.version)) return;
+    }
+
+    if (item.type === "TRANSITION_STUDENT_ISSUE") {
+      if (!item.supportingEvidenceKey) return;
+      const evidence = itemsByKey.get(item.supportingEvidenceKey);
+      if (evidence?.type !== "CREATE_EVIDENCE" || !sameStudentIssueRef(evidence.studentIssueRef, item.studentIssueRef)) {
+        return;
+      }
+      if (item.studentIssueRef.kind === "EXISTING") {
+        const existingIssue = studentIssuesById.get(item.studentIssueRef.studentIssueId.toLowerCase());
+        if (!existingIssue || evidence.studentRef.kind !== "RESOLVED" ||
+          studentIdByAlias.get(evidence.studentRef.studentAlias) !== existingIssue.studentId) {
+          return;
+        }
+      } else {
+        const proposedIssue = itemsByKey.get(item.studentIssueRef.proposalKey);
+        if (proposedIssue?.type !== "CREATE_STUDENT_ISSUE" || !sameStudentRef(evidence.studentRef, proposedIssue.studentRef)) {
+          return;
+        }
+      }
+      dependencyKey = item.supportingEvidenceKey;
     }
 
     if (item.type === "MERGE_CANONICAL_ISSUE") {

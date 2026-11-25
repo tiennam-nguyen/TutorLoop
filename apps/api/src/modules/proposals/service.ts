@@ -7,7 +7,7 @@ import {
 import type { Database } from "@tutorloop/db/database";
 import { insertProductEvent } from "@tutorloop/db/repositories/product-events";
 import { serverProductEvents } from "@tutorloop/observability/product-events";
-import { insertProposalEvidence } from "@tutorloop/db/repositories/evidence";
+import { findEvidenceEvent, insertProposalEvidence } from "@tutorloop/db/repositories/evidence";
 import {
   appendStudentIssueTransition, auditManifestationEdit, findCanonicalIssue, insertCanonicalIssue, insertStudentIssue,
   listClassCanonicalIssues, lockCanonicalGraph, lockStudentIssues, type StudentIssueRow, updateStudentIssueAtVersion,
@@ -35,9 +35,14 @@ type Run = NonNullable<Awaited<ReturnType<typeof findProposalRun>>>;
 type Note = NonNullable<Awaited<ReturnType<typeof findRawNote>>>;
 type Reassessment = NonNullable<Awaited<ReturnType<typeof lockReassessment>>>;
 type Item = Awaited<ReturnType<typeof listProposalItems>>[number];
-type Approval = { item: Item; patch: Item["teacher_patch"]; payload: ProposalDraftItemV1; studentIssue?: EntityLink };
+type Approval = {
+  item: Item; patch: Item["teacher_patch"]; payload: ProposalDraftItemV1;
+  studentIssue?: EntityLink; supportingEvidence?: EntityLink;
+};
 type EntityLink = { entityId: string } | { proposalItemId: string };
-type Result = { id: string; type: "CANONICAL_ISSUE" | "STUDENT_ISSUE" | "EVIDENCE_EVENT" };
+type Result =
+  | { id: string; type: "CANONICAL_ISSUE" | "STUDENT_ISSUE" }
+  | { id: string; type: "EVIDENCE_EVENT"; studentIssueId: string | null };
 
 function notFound(entity: string): never {
   throw new ApiError("NOT_FOUND", `${entity} not found.`);
@@ -178,11 +183,25 @@ function prepareApproval(item: Item, decision: ProposalDecisionInput, byKey: Map
   const patch = decision.decision === "EDIT_AND_APPROVE" ? decision.patch : null;
   const payload = resolvedPayload(item, patch);
   const ref = "studentIssueRef" in payload ? payload.studentIssueRef : null;
-  if (!ref) return { item, patch, payload };
-  const studentIssue = ref.kind === "EXISTING"
-    ? { entityId: requireId(ref.studentIssueId, "Student Issue") }
-    : proposedEntity(item, byKey, ref.proposalKey, "CREATE_STUDENT_ISSUE", "STUDENT_ISSUE");
-  return { item, patch, payload, studentIssue };
+  let supportingEvidence: EntityLink | undefined;
+  let evidenceHolder = item;
+  if (payload.type === "TRANSITION_STUDENT_ISSUE") {
+    if (!payload.supportingEvidenceKey) dependencyError();
+    supportingEvidence = proposedEntity(item, byKey, payload.supportingEvidenceKey, "CREATE_EVIDENCE", "EVIDENCE_EVENT");
+    evidenceHolder = byKey.get(payload.supportingEvidenceKey)!;
+  }
+  if (!ref) return { item, patch, payload, supportingEvidence };
+  let studentIssue: EntityLink;
+  if (ref.kind === "EXISTING") {
+    studentIssue = { entityId: requireId(ref.studentIssueId, "Student Issue") };
+  } else {
+    const proposedIssue = byKey.get(ref.proposalKey);
+    const depOwner = payload.type === "TRANSITION_STUDENT_ISSUE" &&
+      (!proposedIssue || !item.dependency_ids.includes(proposedIssue.id))
+      ? evidenceHolder : item;
+    studentIssue = proposedEntity(depOwner, byKey, ref.proposalKey, "CREATE_STUDENT_ISSUE", "STUDENT_ISSUE");
+  }
+  return { item, patch, payload, studentIssue, supportingEvidence };
 }
 
 async function loadLockedIssues(trx: Tx, classId: string, approvals: Approval[]) {
@@ -286,7 +305,7 @@ async function applyApproval(approval: Approval, context: BatchContext): Promise
         learning_context: payload.learningContext ?? null, proposal_item_id: item.id,
         approved_by_user_id: actor, created_at: now,
       }, patchTimestamp);
-      return { id: row.id, type: "EVIDENCE_EVENT" };
+      return { id: row.id, type: "EVIDENCE_EVENT", studentIssueId: linkedIssue?.id ?? null };
     }
     case "UPDATE_MANIFESTATION":
     case "TRANSITION_STUDENT_ISSUE": {
@@ -297,9 +316,25 @@ async function applyApproval(approval: Approval, context: BatchContext): Promise
       if (item.base_version !== null) {
         verifyVersion(issues.baseVersions.get(item.target_entity_id ?? issue.id), item.base_version);
       }
-      const changed = payload.type === "UPDATE_MANIFESTATION"
-        ? await changeManifestation(trx, issue, payload.manifestation, actor, now)
-        : await changeIssueState(trx, issue, payload, actor, now, item.id);
+      let changed: StudentIssueRow;
+      if (payload.type === "UPDATE_MANIFESTATION") {
+        changed = await changeManifestation(trx, issue, payload.manifestation, actor, now);
+      } else {
+        if (!approval.supportingEvidence) dependencyError();
+        let evidenceEventId: string;
+        if ("proposalItemId" in approval.supportingEvidence) {
+          const evidenceResult = results.get(approval.supportingEvidence.proposalItemId);
+          if (evidenceResult?.type !== "EVIDENCE_EVENT" || evidenceResult.studentIssueId !== issue.id) {
+            dependencyError();
+          }
+          evidenceEventId = evidenceResult.id;
+        } else {
+          const evidenceRow = await findEvidenceEvent(trx, classId, approval.supportingEvidence.entityId);
+          if (!evidenceRow || evidenceRow.student_issue_id !== issue.id) dependencyError();
+          evidenceEventId = evidenceRow.id;
+        }
+        changed = await changeIssueState(trx, issue, payload, actor, now, item.id, evidenceEventId);
+      }
       issues.current.set(issue.id, changed);
       return { id: issue.id, type: "STUDENT_ISSUE" };
     }
@@ -381,7 +416,7 @@ export function applyProposalDecisions(
 
 async function changeIssueState(
   trx: Tx, issue: StudentIssueRow, input: { toState: StudentIssueRow["state"]; reason?: string | null },
-  actor: string, now: Date, proposalItemId: string | null = null,
+  actor: string, now: Date, proposalItemId: string | null = null, evidenceEventId: string | null = null,
 ) {
   try {
     assertIssueTransition(issue.state, input.toState);
@@ -394,7 +429,7 @@ async function changeIssueState(
   const updated = await updateStudentIssueAtVersion(trx, issue, { state: input.toState }, now);
   await appendStudentIssueTransition(trx, {
     class_id: issue.class_id, student_issue_id: issue.id, from_state: issue.state, to_state: input.toState,
-    proposal_item_id: proposalItemId, evidence_event_id: null, actor_user_id: actor, reason: input.reason ?? null,
+    proposal_item_id: proposalItemId, evidence_event_id: evidenceEventId, actor_user_id: actor, reason: input.reason ?? null,
     created_at: now,
   });
   return updated;

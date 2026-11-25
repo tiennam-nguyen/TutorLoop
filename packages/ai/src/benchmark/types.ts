@@ -9,6 +9,8 @@ export const SCENARIOS = [
   "mixed-reassessment", "conflicting-history", "overclaim-diagnosis", "overclaim-mastery", "vietnamese", "mixed-shorthand",
 ] as const;
 
+export type BenchmarkRevision = "v1" | "v2";
+
 export type BenchmarkCase = {
   id: string;
   scenario: typeof SCENARIOS[number];
